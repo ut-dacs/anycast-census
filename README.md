@@ -36,6 +36,21 @@ We use AAAA record addresses from [OpenINTEL](https://www.openintel.nl/) and TUM
 To maintain reasonable probing times, we scan only the first /48 of aliased prefixes.
 A join with the aliased prefixes set from TUM's hitlist, should give a more complete list of anycast prefixes.
 
+## Citing LACeS
+When making use of this dataset for academic research, please cite the following research paper.
+
+```
+@misc{hendriks2025laces,
+      title={LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System}, 
+      author={Remi Hendriks and Matthew Luckie and Mattijs Jonker and Raffaele Sommese and Roland van Rijswijk-Deij},
+      year={2025},
+      eprint={2503.20554},
+      archivePrefix={arXiv},
+      primaryClass={cs.NI},
+      url={https://arxiv.org/abs/2503.20554}, 
+}
+```
+
 ## Anycast Detection Data Structure
 
 Following we describe the structure of the provided census files.
