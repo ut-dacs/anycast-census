@@ -56,11 +56,6 @@ IPv4.parquet
 prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_prefix            ASN                                          locations
 1.1.1.0/24         29        29        29          67         30    False     1.1.1.0/24          13335  [{'city': 'Bangalore', 'country_code': 'IN', '...
 ```
-IPv4.csv
-```bash
-prefix,number_of_sites,backing_prefix
-1.1.1.0/24,67,1.1.1.0/24
-```
 
 **Columns**
 - `Prefix`: The candidate anycast /24 prefix being analyzed (e.g., "1.0.0.0/24").
@@ -84,4 +79,11 @@ prefix,number_of_sites,backing_prefix
 - `lon`: Longitude of airport.
 
 Due to NDA agreements with hitlists providers, only /24 prefixes marked at least by one measurement method as anycast are reported.
+
+IPv4.csv
+```bash
+prefix,number_of_sites,backing_prefix
+1.1.1.0/24,67,1.1.1.0/24
+```
+
 We provide a .csv (with limited data) as it can be loaded using GitHub's Web UI for ease-of-access.
