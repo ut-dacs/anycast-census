@@ -58,8 +58,8 @@ prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_pr
 ```
 IPv4.csv
 ```bash
-prefix,GCD_ICMPv4,GCD_TCPv4,AB_ICMPv4,AB_TCPv4,AB_DNSv4,partial,backing_prefix,ASN
-1.1.1.0/24,67,30,29,29,29,False,1.1.1.0/24,13335
+prefix,number_of_sites,backing_prefix
+1.1.1.0/24,67,1.1.1.0/24
 ```
 
 **Columns**
@@ -69,7 +69,7 @@ prefix,GCD_ICMPv4,GCD_TCPv4,AB_ICMPv4,AB_TCPv4,AB_DNSv4,partial,backing_prefix,A
 - `AB_DNSv4/v6`: Number of locations found using the anycast-based method (DNS/UDP).
 - `GCD_ICMPv4/v6`: Number of sites found using the latency-based method (ICMP).
 - `GCD_TCPv4/v6`: Number of sites found using the latency-based method (TCP).
-- `partial`: Whether we detected partial anycast in this prefix.
+- `partial`: Whether we detected partial anycast in this prefix (IPv4 only).
 - `backing_prefix`: Corresponding IP routing table prefix (as observed using RouteViews).
 - `ASN`: ASN(s) announcing the prefix (MOASes are separated by `_`).
 - `locations`: Locations found using GCD (ICMP locations preferred).
@@ -84,4 +84,4 @@ prefix,GCD_ICMPv4,GCD_TCPv4,AB_ICMPv4,AB_TCPv4,AB_DNSv4,partial,backing_prefix,A
 - `lon`: Longitude of airport.
 
 Due to NDA agreements with hitlists providers, only /24 prefixes marked at least by one measurement method as anycast are reported.
-We provide a .csv (without location data) as it can be loaded in browser for ease-of-access.
+We provide a .csv (with limited data) as it can be loaded using GitHub's Web UI for ease-of-access.
