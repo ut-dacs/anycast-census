@@ -21,7 +21,7 @@ The latency-based approach (GCD) is highly accurate.
 However, it has rare cases of FNs when anycast is deployed in small geographic regions (i.e., regional anycast).
 
 ### Recommendations
-If high confidence is needed, ensure that AB is higher than 2 or GCD detects anycast.
+If high confidence is needed, ensure that AB is higher than 3 or GCD detects anycast.
 If completeness is needed, use all prefixes in this census (either methodology detects anycast).
 
 ## Partial anycast
