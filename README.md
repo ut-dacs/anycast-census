@@ -115,3 +115,9 @@ prefix,number_of_sites,backing_prefix
 
 We provide a .csv (with limited data) as it can be loaded using GitHub's Web UI for ease-of-access.
 This contains the /24-IPv4 or /48-IPv6 prefixes detected as anycast using GCD, alongside the number of sites found using GCD, and the backing prefix.
+
+## Running your own anycast census
+
+We make all tooling publicly available (licensed under MPL2.0).
+First, we provide measurement tooling for performing AB and GCD measurements (available at [MAnycastR](https://github.com/rhendriks/MAnycastR)).
+Second, we provide our optimized implementation of iGreedy available at ([MiGreedy](https://github.com/rhendriks/MiGreedy)).
