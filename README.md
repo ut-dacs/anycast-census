@@ -9,8 +9,8 @@ Contact [remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)
 ## Recommendations for using the census
 
 TLDR:
-* We recommend filtering on AB && GCD == True when high confidence is needed.
-* We recommend filtering on AB || GCD == True (all) when completeness is needed. 
+* We recommend filtering on `(AB > 3) || (GCD > 1)` when high confidence is needed.
+* We recommend filtering on `(AB > 1) || (GCD > 1)` (all) when completeness is needed. 
 
 ### False detection of anycast
 The anycast-based approach (AB) suffers from FPs (see [MAnycast2](https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf)).
