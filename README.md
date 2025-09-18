@@ -120,4 +120,4 @@ This contains the /24-IPv4 or /48-IPv6 prefixes detected as anycast using GCD, a
 
 We make all tooling publicly available (licensed under MPL2.0).
 * First, we provide measurement tooling for performing AB and GCD measurements (available at [MAnycastR](https://github.com/rhendriks/MAnycastR)).
-* Second, we provide our optimized implementation of [iGreedy](https://ieeexplore.ieee.org/abstract/document/7470242) available at ([MiGreedy](https://github.com/rhendriks/MiGreedy)).
+* Second, we provide our optimized implementation of [iGreedy](https://ieeexplore.ieee.org/abstract/document/7470242) (available at [MiGreedy](https://github.com/rhendriks/MiGreedy)).
