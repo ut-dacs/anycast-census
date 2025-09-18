@@ -69,7 +69,7 @@ YYYY/MM/DD/stats
 IPv4.parquet
 ```bash
 prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_prefix            ASN                                          locations
-1.1.1.0/24         29        29        29          67         30    False     1.1.1.0/24          13335  [{'city': 'Bangalore', 'country_code': 'IN', '...
+1.1.1.0/24         29        29        29          67         30    False     1.1.1.0/24          13335  [{'city': 'Honolulu', 'code_country': 'US', 'id': 'HNL', 'latitude': 21.3187007904, 'longitude': -157.9219970703}, ... ]
 ```
 
 **Columns**
