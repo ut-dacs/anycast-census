@@ -57,6 +57,18 @@ Following we describe the structure of the provided census files.
 
 ### Detection Files
 #### Path:
+
+* Latest files (updated daily)
+```
+IPv4-latest.parquet
+IPv6-latest.parquet
+IPv4-latest.csv
+IPv6-latest.csv
+stats-latest
+
+```
+
+* Historical files (going back to March 21, 2024)
 ```
 YYYY/MM/DD/IPv4.parquet
 YYYY/MM/DD/IPv6.parquet
