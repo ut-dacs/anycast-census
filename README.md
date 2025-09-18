@@ -88,8 +88,8 @@ prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_pr
 
 `locations` has the following format:
 - `city`: Geolocated city using iGreedy's algorithm.
-- `country_code`: 2 character country code.
-- `id`: Nearest airport IATA code.
+- `country_code`: 2 character country code (ISO 3166-1 alpha-2).
+- `id`: Nearest airport IATA 3 letter code.
 - `lat`: Latitude of airport.
 - `lon`: Longitude of airport.
 
@@ -102,3 +102,4 @@ prefix,number_of_sites,backing_prefix
 ```
 
 We provide a .csv (with limited data) as it can be loaded using GitHub's Web UI for ease-of-access.
+This contains the /24-IPv4 or /48-IPv6 prefixes detected as anycast using GCD, alongside the number of sites found using GCD, and the backing prefix.
