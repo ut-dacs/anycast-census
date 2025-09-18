@@ -14,7 +14,7 @@ TLDR:
 
 ### False detection of anycast
 The anycast-based approach (AB) suffers from FPs (see [MAnycast2](https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf)).
-These FPs are especially prevalent when AB has a value of 2 (i.e., receiving replies at 2 sites).
+These FPs are especially prevalent when AB has a value of less than 3 (i.e., receiving replies at less than 3 sites).
 
 ### False detection of unicast
 The latency-based approach (GCD) is highly accurate.
