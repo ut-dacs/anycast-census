@@ -1,5 +1,5 @@
 # LACeS Anycast Census
-LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System
+[LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System](https://arxiv.org/abs/2503.20554)
 
 This repository contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
 The repository is updated daily.
@@ -99,7 +99,7 @@ prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_pr
 `backing_prefix` and `ASN` are from CAIDA's [prefix2as](https://www.caida.org/catalog/datasets/routeviews-prefix2as/) dataset.
 
 `locations` has the following format:
-- `city`: Geolocated city using iGreedy's algorithm.
+- `city`: Geolocated city using [iGreedy's algorithm](https://ieeexplore.ieee.org/abstract/document/7470242).
 - `country_code`: 2 character country code (ISO 3166-1 alpha-2).
 - `id`: Nearest airport IATA 3 letter code.
 - `lat`: Latitude of airport.
@@ -119,5 +119,5 @@ This contains the /24-IPv4 or /48-IPv6 prefixes detected as anycast using GCD, a
 ## Running your own anycast census
 
 We make all tooling publicly available (licensed under MPL2.0).
-First, we provide measurement tooling for performing AB and GCD measurements (available at [MAnycastR](https://github.com/rhendriks/MAnycastR)).
-Second, we provide our optimized implementation of iGreedy available at ([MiGreedy](https://github.com/rhendriks/MiGreedy)).
+* First, we provide measurement tooling for performing AB and GCD measurements (available at [MAnycastR](https://github.com/rhendriks/MAnycastR)).
+* Second, we provide our optimized implementation of [iGreedy](https://ieeexplore.ieee.org/abstract/document/7470242) available at ([MiGreedy](https://github.com/rhendriks/MiGreedy)).
