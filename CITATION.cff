@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this dataset, please cite the following paper."
+title: "LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
+authors:
+  - family-names: Hendriks
+    given-names: Remi
+  - family-names: Luckie
+    given-names: Matthew
+  - family-names: Jonker
+    given-names: Mattijs
+  - family-names: Sommese
+    given-names: Raffaele
+  - family-names: van Rijswijk-Deij
+    given-names: Roland
+date-released: 2025-03-27
+url: "https://arxiv.org/abs/2503.20554"
+identifiers:
+  - type: url
+    value: "https://arxiv.org/abs/2503.20554"
+  - type: other
+    description: "arXiv eprint"
+    value: "arXiv:2503.20554"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: Hendriks
+      given-names: Remi
+    - family-names: Luckie
+      given-names: Matthew
+    - family-names: Jonker
+      given-names: Mattijs
+    - family-names: Sommese
+      given-names: Raffaele
+    - family-names: van Rijswijk-Deij
+      given-names: Roland
+  title: "LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
+  year: 2025
+  notes: "arXiv preprint arXiv:2503.20554"
+  url: "https://arxiv.org/abs/2503.20554"
