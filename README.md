@@ -1,7 +1,7 @@
 # LACeS Anycast Census
 [LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System](https://arxiv.org/abs/2503.20554)
 
-This repository contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
+[This repository](https://github.com/ut-dacs/anycast-census) contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
 The repository is updated daily.
 
 Contact [remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)
