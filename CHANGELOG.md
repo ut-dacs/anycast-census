@@ -21,3 +21,5 @@
 * 18/08/2025 - Updated TCPv4 and IPv6 hitlists
 * 03/09/2025 - Updated feedback loop (ICMPv4)
 * 04/09/2025 - Updated feedback loop (ICMPv6)
+* 17/11/2025 - Ark outage -> only 32 VPs used for GCD
+* 18/11/2025 - Update IPv4 hitlist (DNS and ICMP)
