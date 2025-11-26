@@ -21,5 +21,6 @@
 * 18/08/2025 - Updated TCPv4 and IPv6 hitlists
 * 03/09/2025 - Updated feedback loop (ICMPv4)
 * 04/09/2025 - Updated feedback loop (ICMPv6)
+* 13/11/2025 <-> 14/11/2025 - Routing anomaly at ca-yto anycast site. Site temporarily removed from AB measurements [ONGOING]
 * 17/11/2025 - Ark outage -> only 32 VPs used for GCD
 * 18/11/2025 - Update IPv4 hitlist (DNS and ICMP)
