@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this dataset, please cite the following paper."
-title: "LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
+title: "LACeS: An Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
 authors:
   - family-names: Hendriks
     given-names: Remi
@@ -12,16 +12,14 @@ authors:
     given-names: Raffaele
   - family-names: van Rijswijk-Deij
     given-names: Roland
-date-released: 2025-03-27
-url: "https://arxiv.org/abs/2503.20554"
+date-released: 2025-03-21
+url: "https://doi.org/10.1145/3730567.3764484"
 identifiers:
-  - type: url
-    value: "https://arxiv.org/abs/2503.20554"
-  - type: other
-    description: "arXiv eprint"
-    value: "arXiv:2503.20554"
+  - type: doi
+    value: "10.1145/3730567.3764484"
+
 preferred-citation:
-  type: article
+  type: conference-paper
   authors:
     - family-names: Hendriks
       given-names: Remi
@@ -33,7 +31,12 @@ preferred-citation:
       given-names: Raffaele
     - family-names: van Rijswijk-Deij
       given-names: Roland
-  title: "LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
+  title: "LACeS: An Open, Fast, Responsible and Efficient Longitudinal Anycast Census System"
   year: 2025
-  notes: "arXiv preprint arXiv:2503.20554"
-  url: "https://arxiv.org/abs/2503.20554"
+  conference:
+    name: "Proceedings of the 2025 ACM Internet Measurement Conference"
+    location: "USA"
+  collection-title: "IMC '25"
+  pages: "445–461"
+  doi: "10.1145/3730567.3764484"
+  url: "https://doi.org/10.1145/3730567.3764484"
