@@ -31,6 +31,11 @@ Scanning at /32 granularity reveals ~1.0k /24s are partially anycast.
 We flag these cases using bi-annual measurement data, but partial prefixes are dynamic over time.
 Future work is providing an API for live measurements.
 
+## IPv4
+We use the [USC/ISI ANT IPv4 hitlist](https://ant.isi.edu/datasets/index.html) containing a single likely ICMP/ping responsive IP address per /24 block as representative.
+Additionally, we use sources like [public DNS nameservers](public-dns.info) and [OpenINTEL infra:ns](openintel.nl) for our DNS hitlist, and large-scale zmap TCP SYN/ACK scans for our TCP hitlist.
+Hitlists are updated quarterly in sync with the USC/ISI hitlist.
+
 ## IPv6
 We use AAAA record addresses from [OpenINTEL](https://www.openintel.nl/) and TUM's public IPv6 hitlist [IPv6Hitlist](https://ipv6hitlist.github.io/).
 To maintain reasonable probing times, we scan only the first /48 of aliased prefixes.
