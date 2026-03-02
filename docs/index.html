@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Anycast Census ??? Prefix Lookup</title>
+  <title>Anycast Census — Prefix Lookup</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
@@ -11,13 +11,45 @@
 <body>
   <div class="container">
     <div class="site-header">
-      <h1>Anycast Census ??? Prefix Lookup</h1>
-      <a href="." id="home-link" class="home-btn">??? Home</a>
+      <h1>Anycast Census — Prefix Lookup</h1>
+      <a href="." id="home-link" class="home-btn">⌂ Home</a>
     </div>
     <p class="subtitle">
       Query the latest <a href="https://github.com/romain-fontugne/anycast-census" target="_blank">LACeS anycast census</a> data.
       Search by exact prefix (/24 or /48), any enclosing block, or AS number.
     </p>
+
+    <div class="search-row">
+      <input type="text" id="prefix-input" placeholder="1.1.1.0/24 · 1.1.0.0/16 · AS13335 · 2606:4700::/48" spellcheck="false" autocomplete="off">
+      <button id="search-btn" disabled>Look up</button>
+    </div>
+
+    <div class="mode-row">
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="mode-lookup">Lookup</button>
+        <button class="mode-tab" id="mode-compare">Compare</button>
+      </div>
+    </div>
+
+    <div id="lookup-date-row" class="date-row">
+      <span>As of:</span>
+      <label><input type="radio" name="when" id="when-latest" value="latest" checked> Latest</label>
+      <label>
+        <input type="radio" name="when" id="when-date" value="date">
+        <input type="date" id="date-input" min="2024-03-21" disabled>
+      </label>
+    </div>
+
+    <div id="compare-row" class="date-row" style="display:none">
+      <span>Date A:</span>
+      <input type="date" id="cmp-date-a" min="2024-03-21">
+      <span>Date B:</span>
+      <input type="date" id="cmp-date-b" min="2024-03-21">
+      <button id="cmp-btn" class="cmp-btn">Compare</button>
+    </div>
+
+    <div class="status" id="status">Loading query engine…</div>
+    <div id="results"></div>
 
     <div class="card" id="chart-section" style="display:none;margin-bottom:1.5rem">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
@@ -27,34 +59,17 @@
             <button class="chart-tab active" data-ver="v4">IPv4</button>
             <button class="chart-tab" data-ver="v6">IPv6</button>
           </div>
-          <button id="chart-fs-btn" class="chart-fs-btn" title="Toggle fullscreen">???</button>
+          <button id="chart-fs-btn" class="chart-fs-btn" title="Toggle fullscreen">⛶</button>
         </div>
       </div>
       <canvas id="chart-canvas" style="width:100%;height:260px;display:block;cursor:crosshair"></canvas>
       <div id="chart-legend" class="chart-legend"></div>
     </div>
 
-    <div class="search-row">
-      <input type="text" id="prefix-input" placeholder="1.1.1.0/24 ?? 1.1.0.0/16 ?? AS13335 ?? 2606:4700::/48" spellcheck="false" autocomplete="off">
-      <button id="search-btn" disabled>Look up</button>
-    </div>
-
-    <div class="date-row">
-      <span>As of:</span>
-      <label><input type="radio" name="when" id="when-latest" value="latest" checked> Latest</label>
-      <label>
-        <input type="radio" name="when" id="when-date" value="date">
-        <input type="date" id="date-input" min="2024-03-21" disabled>
-      </label>
-    </div>
-
-    <div class="status" id="status">Loading query engine???</div>
-    <div id="results"></div>
-
     <div class="examples" id="examples" style="display:none">
-      Try: <span data-prefix="1.1.1.0/24">1.1.1.0/24</span> &nbsp;??&nbsp;
-      <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;??&nbsp;
-      <span data-prefix="AS13335">AS13335</span> &nbsp;??&nbsp;
+      Try: <span data-prefix="1.1.1.0/24">1.1.1.0/24</span> &nbsp;·&nbsp;
+      <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;·&nbsp;
+      <span data-prefix="AS13335">AS13335</span> &nbsp;·&nbsp;
       <span data-prefix="2606:4700::/48">2606:4700::/48</span>
     </div>
 
@@ -68,7 +83,7 @@
             <li>Use <code>(AB &gt; 3) || (GCD &gt; 1)</code> when <strong>high confidence</strong> is needed.</li>
             <li>Use <code>(AB &gt; 1) || (GCD &gt; 1)</code> (i.e. all prefixes) when <strong>completeness</strong> is needed.</li>
           </ul>
-          <p><strong>False positives (AB).</strong> The anycast-based approach (AB) can produce false positives ??? especially when AB reports fewer than 3 sites. This is a known limitation of the underlying methodology; see <a href="https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf" target="_blank">MAnycast2</a>.</p>
+          <p><strong>False positives (AB).</strong> The anycast-based approach (AB) can produce false positives — especially when AB reports fewer than 3 sites. This is a known limitation of the underlying methodology; see <a href="https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf" target="_blank">MAnycast2</a>.</p>
           <p><strong>False negatives (GCD).</strong> The latency-based approach (GCD) is highly accurate, but may miss prefixes deployed only in small geographic regions (regional anycast).</p>
           <p><strong>Partial anycast.</strong> Because probing runs at /24 granularity, some prefixes contain a mix of unicast and anycast addresses. Around 1,000 /24s are partially anycast (identified via bi-annual /32 scans). These are flagged with the <code>partial</code> column, but the flag may not reflect short-term changes.</p>
         </div>
@@ -94,7 +109,7 @@
       <details class="doc-item">
         <summary>Probing methodology</summary>
         <div class="doc-body">
-          <p><strong>IPv4.</strong> The ICMP hitlist uses the <a href="https://ant.isi.edu/datasets/index.html" target="_blank">USC/ISI ANT IPv4 hitlist</a> ??? one likely-responsive IP per /24. The DNS hitlist draws from <a href="https://public-dns.info" target="_blank">public DNS nameservers</a> and <a href="https://openintel.nl" target="_blank">OpenINTEL infra:ns</a>. The TCP hitlist uses large-scale ZMap SYN/ACK scans. All hitlists are refreshed quarterly in sync with the USC/ISI release.</p>
+          <p><strong>IPv4.</strong> The ICMP hitlist uses the <a href="https://ant.isi.edu/datasets/index.html" target="_blank">USC/ISI ANT IPv4 hitlist</a> — one likely-responsive IP per /24. The DNS hitlist draws from <a href="https://public-dns.info" target="_blank">public DNS nameservers</a> and <a href="https://openintel.nl" target="_blank">OpenINTEL infra:ns</a>. The TCP hitlist uses large-scale ZMap SYN/ACK scans. All hitlists are refreshed quarterly in sync with the USC/ISI release.</p>
           <p><strong>IPv6.</strong> AAAA record addresses from <a href="https://www.openintel.nl/" target="_blank">OpenINTEL</a> and <a href="https://ipv6hitlist.github.io/" target="_blank">TUM's IPv6Hitlist</a>. To keep probing times manageable, only the first /48 of aliased prefixes is scanned. For a more complete view, join with TUM's aliased-prefix set.</p>
           <p>The census runs daily and is updated in this repository automatically.</p>
         </div>
@@ -127,8 +142,8 @@
         <div class="doc-body">
           <p>All tooling is publicly available under MPL 2.0:</p>
           <ul>
-            <li><a href="https://github.com/rhendriks/MAnycastR" target="_blank">MAnycastR</a> ??? measurement tooling for AB and GCD measurements.</li>
-            <li><a href="https://github.com/rhendriks/MiGreedy" target="_blank">MiGreedy</a> ??? optimised implementation of the iGreedy latency-based geolocation algorithm.</li>
+            <li><a href="https://github.com/rhendriks/MAnycastR" target="_blank">MAnycastR</a> — measurement tooling for AB and GCD measurements.</li>
+            <li><a href="https://github.com/rhendriks/MiGreedy" target="_blank">MiGreedy</a> — optimised implementation of the iGreedy latency-based geolocation algorithm.</li>
           </ul>
         </div>
       </details>
