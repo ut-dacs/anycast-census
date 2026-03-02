@@ -1,0 +1,14 @@
+ICMPv4 GCD nodes: 259
+ICMPv6 GCD nodes: 133
+
+Counts:
+* Anycast-based ICMPv4: 26,638
+* Anycast-based TCPv4: 11,340
+* Anycast-based DNSv4: 3,377
+* GCD-based ICMPv4: 13,758
+* GCD-based TCPv4: 6,500
+* Anycast-based ICMPv6: 17,563
+* Anycast-based TCPv6: 14,863
+* Anycast-based DNSv6: 1,868
+* GCD-based ICMPv6: 6,369
+* GCD-based TCPv6: 3,956

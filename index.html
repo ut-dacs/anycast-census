@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anycast Census ??? Prefix Lookup</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="site-header">
+      <h1>Anycast Census ??? Prefix Lookup</h1>
+      <a href="." id="home-link" class="home-btn">??? Home</a>
+    </div>
+    <p class="subtitle">
+      Query the latest <a href="https://github.com/romain-fontugne/anycast-census" target="_blank">LACeS anycast census</a> data.
+      Search by exact prefix (/24 or /48), any enclosing block, or AS number.
+    </p>
+
+    <div class="card" id="chart-section" style="display:none;margin-bottom:1.5rem">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+        <span>Anycast prefix count over time</span>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <div class="chart-tabs">
+            <button class="chart-tab active" data-ver="v4">IPv4</button>
+            <button class="chart-tab" data-ver="v6">IPv6</button>
+          </div>
+          <button id="chart-fs-btn" class="chart-fs-btn" title="Toggle fullscreen">???</button>
+        </div>
+      </div>
+      <canvas id="chart-canvas" style="width:100%;height:260px;display:block;cursor:crosshair"></canvas>
+      <div id="chart-legend" class="chart-legend"></div>
+    </div>
+
+    <div class="search-row">
+      <input type="text" id="prefix-input" placeholder="1.1.1.0/24 ?? 1.1.0.0/16 ?? AS13335 ?? 2606:4700::/48" spellcheck="false" autocomplete="off">
+      <button id="search-btn" disabled>Look up</button>
+    </div>
+
+    <div class="date-row">
+      <span>As of:</span>
+      <label><input type="radio" name="when" id="when-latest" value="latest" checked> Latest</label>
+      <label>
+        <input type="radio" name="when" id="when-date" value="date">
+        <input type="date" id="date-input" min="2024-03-21" disabled>
+      </label>
+    </div>
+
+    <div class="status" id="status">Loading query engine???</div>
+    <div id="results"></div>
+
+    <div class="examples" id="examples" style="display:none">
+      Try: <span data-prefix="1.1.1.0/24">1.1.1.0/24</span> &nbsp;??&nbsp;
+      <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;??&nbsp;
+      <span data-prefix="AS13335">AS13335</span> &nbsp;??&nbsp;
+      <span data-prefix="2606:4700::/48">2606:4700::/48</span>
+    </div>
+
+    <div class="doc-section">
+
+      <details class="doc-item">
+        <summary>Recommendations for using this dataset</summary>
+        <div class="doc-body">
+          <p><strong>Quick summary:</strong></p>
+          <ul>
+            <li>Use <code>(AB &gt; 3) || (GCD &gt; 1)</code> when <strong>high confidence</strong> is needed.</li>
+            <li>Use <code>(AB &gt; 1) || (GCD &gt; 1)</code> (i.e. all prefixes) when <strong>completeness</strong> is needed.</li>
+          </ul>
+          <p><strong>False positives (AB).</strong> The anycast-based approach (AB) can produce false positives ??? especially when AB reports fewer than 3 sites. This is a known limitation of the underlying methodology; see <a href="https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf" target="_blank">MAnycast2</a>.</p>
+          <p><strong>False negatives (GCD).</strong> The latency-based approach (GCD) is highly accurate, but may miss prefixes deployed only in small geographic regions (regional anycast).</p>
+          <p><strong>Partial anycast.</strong> Because probing runs at /24 granularity, some prefixes contain a mix of unicast and anycast addresses. Around 1,000 /24s are partially anycast (identified via bi-annual /32 scans). These are flagged with the <code>partial</code> column, but the flag may not reflect short-term changes.</p>
+        </div>
+      </details>
+
+      <details class="doc-item">
+        <summary>Data structure</summary>
+        <div class="doc-body">
+          <p>Each row in the dataset represents one /24 (IPv4) or /48 (IPv6) prefix detected as anycast by at least one method. Column meanings:</p>
+          <div class="doc-cols">
+            <div class="doc-col"><div class="doc-col-name">prefix</div><div class="doc-col-desc">Candidate anycast prefix (/24 or /48).</div></div>
+            <div class="doc-col"><div class="doc-col-name">AB_ICMP / AB_TCP / AB_DNS</div><div class="doc-col-desc">Sites found by the anycast-based method (ICMP, TCP SYN/ACK, DNS/UDP).</div></div>
+            <div class="doc-col"><div class="doc-col-name">GCD_ICMP / GCD_TCP</div><div class="doc-col-desc">Sites found by the latency-based (iGreedy-style) method.</div></div>
+            <div class="doc-col"><div class="doc-col-name">partial</div><div class="doc-col-desc">True if mixed unicast/anycast was detected within the /24 (IPv4 only).</div></div>
+            <div class="doc-col"><div class="doc-col-name">backing_prefix</div><div class="doc-col-desc">Corresponding BGP routing-table prefix (RouteViews / prefix2as).</div></div>
+            <div class="doc-col"><div class="doc-col-name">ASN</div><div class="doc-col-desc">Origin ASN(s); multiple origins (MOAS) are separated by <code>_</code>.</div></div>
+            <div class="doc-col"><div class="doc-col-name">locations</div><div class="doc-col-desc">GCD-detected PoPs: city, country code, IATA code, latitude, longitude.</div></div>
+          </div>
+          <p style="margin-top:0.75rem">Both AB and GCD consider anycast confirmed when the number of detected sites is greater than 1. The <code>backing_prefix</code> and <code>ASN</code> columns are sourced from <a href="https://www.caida.org/catalog/datasets/routeviews-prefix2as/" target="_blank">CAIDA's prefix2as</a>.</p>
+        </div>
+      </details>
+
+      <details class="doc-item">
+        <summary>Probing methodology</summary>
+        <div class="doc-body">
+          <p><strong>IPv4.</strong> The ICMP hitlist uses the <a href="https://ant.isi.edu/datasets/index.html" target="_blank">USC/ISI ANT IPv4 hitlist</a> ??? one likely-responsive IP per /24. The DNS hitlist draws from <a href="https://public-dns.info" target="_blank">public DNS nameservers</a> and <a href="https://openintel.nl" target="_blank">OpenINTEL infra:ns</a>. The TCP hitlist uses large-scale ZMap SYN/ACK scans. All hitlists are refreshed quarterly in sync with the USC/ISI release.</p>
+          <p><strong>IPv6.</strong> AAAA record addresses from <a href="https://www.openintel.nl/" target="_blank">OpenINTEL</a> and <a href="https://ipv6hitlist.github.io/" target="_blank">TUM's IPv6Hitlist</a>. To keep probing times manageable, only the first /48 of aliased prefixes is scanned. For a more complete view, join with TUM's aliased-prefix set.</p>
+          <p>The census runs daily and is updated in this repository automatically.</p>
+        </div>
+      </details>
+
+      <details class="doc-item">
+        <summary>Citing LACeS</summary>
+        <div class="doc-body">
+          <p>If you use this dataset in academic work, please cite:</p>
+          <p>Hendriks, Luckie, Jonker, Sommese, van Rijswijk-Deij. <em>LACeS: An Open, Fast, Responsible and Efficient Longitudinal Anycast Census System.</em> IMC 2025. <a href="https://doi.org/10.1145/3730567.3764484" target="_blank">doi:10.1145/3730567.3764484</a></p>
+<div class="bibtex-wrap">
+          <button class="bibtex-copy" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim());this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+<pre class="bibtex">@inproceedings{10.1145/3730567.3764484,
+  author    = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs
+               and Sommese, Raffaele and van Rijswijk-Deij, Roland},
+  title     = {LACeS: An Open, Fast, Responsible and Efficient
+               Longitudinal Anycast Census System},
+  booktitle = {Proceedings of the 2025 ACM Internet Measurement Conference},
+  year      = {2025},
+  pages     = {445--461},
+  doi       = {10.1145/3730567.3764484},
+  series    = {IMC '25}
+}</pre>
+        </div>
+        </div>
+      </details>
+
+      <details class="doc-item">
+        <summary>Run your own anycast census</summary>
+        <div class="doc-body">
+          <p>All tooling is publicly available under MPL 2.0:</p>
+          <ul>
+            <li><a href="https://github.com/rhendriks/MAnycastR" target="_blank">MAnycastR</a> ??? measurement tooling for AB and GCD measurements.</li>
+            <li><a href="https://github.com/rhendriks/MiGreedy" target="_blank">MiGreedy</a> ??? optimised implementation of the iGreedy latency-based geolocation algorithm.</li>
+          </ul>
+        </div>
+      </details>
+
+    </div>
+
+    <footer class="site-footer">
+      <p>
+        Raw data and auxiliary data are available on request.
+        Contact <a href="mailto:remi.hendriks@utwente.nl">remi.hendriks@utwente.nl</a>.
+      </p>
+    </footer>
+
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
