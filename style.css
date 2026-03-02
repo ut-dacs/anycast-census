@@ -542,6 +542,189 @@ pre.bibtex {
 }
 .bibtex-copy:hover { border-color: #8b949e; color: #e6edf3; }
 
+/* ── Mode tabs (Lookup / Compare) ── */
+.mode-row { margin-bottom: 0.75rem; }
+
+.mode-tabs { display: inline-flex; gap: 0; }
+
+.mode-tab {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.75rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.mode-tab:first-child { border-radius: 6px 0 0 6px; }
+.mode-tab:last-child  { border-radius: 0 6px 6px 0; border-left: none; }
+.mode-tab.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+.mode-tab:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
+
+.cmp-btn {
+  background: #1f6feb;
+  border: 1px solid #388bfd;
+  border-radius: 6px;
+  color: #f0f6fc;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.85rem;
+}
+.cmp-btn:hover { background: #388bfd; }
+
+/* ── Compare results ── */
+.cmp-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cmp-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cmp-dot-both  { background: #58a6ff; }
+.cmp-dot-onlyA { background: #3fb950; }
+.cmp-dot-onlyB { background: #d29922; }
+
+.cmp-diff-table th { font-size: 0.78rem; }
+.cmp-diff-table td { font-size: 0.82rem; }
+
+.cmp-val-up   { color: #3fb950; }
+.cmp-val-down { color: #f85149; }
+.cmp-val-same { color: #8b949e; }
+
+.csv-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+.csv-btn:hover { border-color: #8b949e; color: #e6edf3; }
+
+/* ── Pagination ── */
+.pg-controls-slot:empty { display: none; }
+
+.pg-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+  padding: 0.4rem 0;
+}
+
+.pg-info { color: #8b949e; }
+
+.pg-page {
+  color: #8b949e;
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.pg-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #e6edf3;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.2;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pg-btn:hover:not(:disabled) { background: #30363d; border-color: #8b949e; }
+.pg-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.pg-sep { color: #30363d; }
+
+.pg-size-lbl { color: #484f58; }
+
+.pg-size-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.pg-size-btn.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+.pg-size-btn:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
+
+/* ── Confidence filter buttons ── */
+.conf-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.conf-filter-lbl { color: #484f58; }
+
+.conf-filter-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.conf-filter-btn.active, .ver-filter-btn.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+.conf-filter-btn:hover:not(.active), .ver-filter-btn:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
+
+.ver-filter-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.conf-col {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  display: inline-block;
+}
+.conf-col-high   { background: #238636aa; color: #3fb950; }
+.conf-col-medium { background: #b4530933; color: #fbbf24; }
+.conf-col-low    { background: #6e140033; color: #f85149; }
+
 /* ── Footer ── */
 .site-footer {
   margin-top: 2.5rem;

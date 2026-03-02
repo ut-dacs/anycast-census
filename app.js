@@ -7,8 +7,22 @@ const searchBtn  = document.getElementById('search-btn');
 const inputEl    = document.getElementById('prefix-input');
 const examplesEl = document.getElementById('examples');
 const dateInput  = document.getElementById('date-input');
-const whenLatest = document.getElementById('when-latest');
-const whenDate   = document.getElementById('when-date');
+const whenLatest  = document.getElementById('when-latest');
+const whenDate    = document.getElementById('when-date');
+const modeLookup  = document.getElementById('mode-lookup');
+const modeCompare = document.getElementById('mode-compare');
+const lookupRow   = document.getElementById('lookup-date-row');
+const compareRow  = document.getElementById('compare-row');
+const cmpDateA    = document.getElementById('cmp-date-a');
+const cmpDateB    = document.getElementById('cmp-date-b');
+const cmpBtn      = document.getElementById('cmp-btn');
+let isCompareMode = false;
+
+// ── Pagination state ────────────────────────────────────────────────────────
+const pgStore = {};
+let pgCounter = 0;
+let currentLookupCtx  = null;  // { viewKey, dateLabel }
+let currentCompareCtx = null;  // { dateA, dateB }
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
@@ -23,7 +37,7 @@ const baseUrl = (() => {
 })();
 
 // Set max date to today
-dateInput.max = new Date().toISOString().slice(0, 10);
+dateInput.max = cmpDateA.max = cmpDateB.max = new Date().toISOString().slice(0, 10);
 
 // Expand a bare IPv6 address to its enclosing /48 prefix string
 function ipv6ToSlash48(addr) {
@@ -71,12 +85,27 @@ try {
   searchBtn.disabled = false;
   examplesEl.style.display = '';
 
-  // Auto-run lookup if URL has query params
+  // Auto-run lookup / compare if URL has query params
   const initParams = new URLSearchParams(window.location.search);
+  const initMode = initParams.get('mode');
   const initQ    = initParams.get('q');
-  const initDate = initParams.get('date');
-  if (initQ) {
+  if (initMode === 'compare') {
+    const dA = initParams.get('dateA');
+    const dB = initParams.get('dateB');
+    if (dA && dB) {
+      isCompareMode = true;
+      modeCompare.classList.add('active');
+      modeLookup.classList.remove('active');
+      lookupRow.style.display = 'none';
+      compareRow.style.display = '';
+      cmpDateA.value = dA;
+      cmpDateB.value = dB;
+      if (initQ) inputEl.value = initQ;
+      await runCompare({ updateUrl: false });
+    }
+  } else if (initQ) {
     inputEl.value = initQ;
+    const initDate = initParams.get('date');
     if (initDate) {
       whenDate.checked   = true;
       whenLatest.checked = false;
@@ -92,9 +121,35 @@ try {
 window.addEventListener('popstate', async e => {
   if (!conn) return;
   const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
   const q    = params.get('q');
-  const date = params.get('date');
-  if (q) {
+
+  function ensureLookupMode() {
+    if (!isCompareMode) return;
+    isCompareMode = false;
+    modeLookup.classList.add('active');
+    modeCompare.classList.remove('active');
+    lookupRow.style.display = '';
+    compareRow.style.display = 'none';
+  }
+
+  if (mode === 'compare') {
+    const dateA = params.get('dateA');
+    const dateB = params.get('dateB');
+    if (dateA && dateB) {
+      isCompareMode = true;
+      modeCompare.classList.add('active');
+      modeLookup.classList.remove('active');
+      lookupRow.style.display = 'none';
+      compareRow.style.display = '';
+      cmpDateA.value = dateA;
+      cmpDateB.value = dateB;
+      inputEl.value = q || '';
+      await runCompare({ updateUrl: false });
+    }
+  } else if (q) {
+    ensureLookupMode();
+    const date = params.get('date');
     inputEl.value = q;
     if (date) {
       whenDate.checked   = true;
@@ -108,8 +163,10 @@ window.addEventListener('popstate', async e => {
     }
     await lookup(q, { updateUrl: false });
   } else {
+    ensureLookupMode();
     inputEl.value = '';
     resultsEl.innerHTML = '';
+    resetPg();
     setStatus('Ready.');
   }
 });
@@ -141,7 +198,7 @@ async function lookup(raw, { updateUrl = true } = {}) {
   const viewKey   = selectedViewKey();
   const dateLabel = viewKey === 'latest' ? 'latest' : viewKey.replace(/\//g, '-');
   resultsEl.innerHTML = '';
-  document.getElementById('chart-section').style.display = 'none';
+  resetPg(); currentCompareCtx = null;
 
   if (updateUrl) {
     const params = new URLSearchParams({ q: input });
@@ -244,7 +301,7 @@ async function lookupASN(asn, viewKey, dateLabel) {
     }
     setStatus('');
     resultsEl.innerHTML = renderPrefixList(rows, `AS${asn}`, dateLabel);
-    wirePrefixListClicks(viewKey, dateLabel);
+    currentLookupCtx = { viewKey, dateLabel };
   } catch (err) { handleQueryError(err, dateLabel); }
 }
 
@@ -283,7 +340,7 @@ async function lookupCIDRBlockIPv4(cidr, viewKey, dateLabel) {
     }
     setStatus('');
     resultsEl.innerHTML = renderPrefixList(rows, cidr, dateLabel);
-    wirePrefixListClicks(viewKey, dateLabel);
+    currentLookupCtx = { viewKey, dateLabel };
   } catch (err) { handleQueryError(err, dateLabel); }
 }
 
@@ -313,7 +370,7 @@ async function lookupCIDRBlockIPv6(cidr, viewKey, dateLabel) {
     }
     setStatus('');
     resultsEl.innerHTML = renderPrefixList(rows, cidr, dateLabel);
-    wirePrefixListClicks(viewKey, dateLabel);
+    currentLookupCtx = { viewKey, dateLabel };
   } catch (err) { handleQueryError(err, dateLabel); }
 }
 
@@ -333,14 +390,74 @@ function getConfidence(ab_max, gcd_max) {
   return               { label: 'Not confident',      cls: 'confidence-low' };
 }
 
+// ── Pagination helpers ──────────────────────────────────────────────────────
+function resetPg() { for (const k of Object.keys(pgStore)) delete pgStore[k]; }
+
+function pgControlsHtml(id, total, page, pageSize) {
+  if (total <= 10) return '';
+  const pages = Math.ceil(total / pageSize) || 1;
+  const start = page * pageSize + 1;
+  const end   = Math.min((page + 1) * pageSize, total);
+  const sizes = [10, 25, 50, 100];
+  return `<div class="pg-ctrl">
+    <span class="pg-info">${fmtN(start)}\u2013${fmtN(end)} of ${fmtN(total)}</span>
+    <button class="pg-prev pg-btn" ${page === 0 ? 'disabled' : ''} title="Previous page">\u2039</button>
+    <span class="pg-page">${page + 1} / ${pages}</span>
+    <button class="pg-next pg-btn" ${page >= pages - 1 ? 'disabled' : ''} title="Next page">\u203A</button>
+    <span class="pg-sep">\u00B7</span>
+    <span class="pg-size-lbl">Per page</span>
+    ${sizes.map(s => `<button class="pg-size-btn${s === pageSize ? ' active' : ''}" data-size="${s}">${s}</button>`).join('')}
+  </div>`;
+}
+
+function updatePgView(id) {
+  const st = pgStore[id];
+  if (!st) return;
+  const wrap = document.querySelector(`[data-pg-id="${id}"]`);
+  if (!wrap) return;
+  const { rows, page, pageSize, renderRows } = st;
+  const slice = rows.slice(page * pageSize, page * pageSize + pageSize);
+  const tbody = wrap.querySelector('tbody');
+  if (tbody) tbody.innerHTML = renderRows(slice);
+  const html = pgControlsHtml(id, rows.length, page, pageSize);
+  wrap.querySelectorAll('.pg-controls-slot').forEach(el => { el.innerHTML = html; });
+  const topSlot = wrap.querySelector('.pg-controls-slot');
+  if (topSlot) topSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function applyTableFilter(id, filterType, value) {
+  const st = pgStore[id];
+  if (!st || !st.allRows) return;
+  if (filterType === 'conf') st.confFilter = value;
+  else if (filterType === 'ver') st.verFilter = value;
+  // Apply both filters
+  st.rows = st.allRows.filter(r => {
+    if (st.confFilter !== 'all' && r.conf !== st.confFilter) return false;
+    if (st.verFilter  !== 'all' && r.ver  !== st.verFilter)  return false;
+    return true;
+  });
+  st.page = 0;
+  updatePgView(id);
+  // Update filter button active states
+  const wrap = document.querySelector(`[data-pg-id="${id}"]`);
+  if (!wrap) return;
+  wrap.querySelectorAll('.conf-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.conf === st.confFilter);
+  });
+  wrap.querySelectorAll('.ver-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.ver === st.verFilter);
+  });
+  // Update count display
+  const countEl = wrap.querySelector('.conf-filter-count');
+  if (countEl) countEl.textContent = `${fmtN(st.rows.length)} shown`;
+}
+
 function renderPrefixList(rows, searchTerm, dateLabel) {
   const n = v => Number(v ?? 0);
-  const cap = 500;
-  const shown = rows.slice(0, cap);
-  const moreNote = rows.length > cap
-    ? `<p class="loc-note">Showing ${cap} of ${rows.length} prefixes.</p>` : '';
+  const id = `pg${++pgCounter}`;
+  const pageSize = 10;
 
-  const tbody = shown.map(row => {
+  const renderRows = (slice) => slice.map(row => {
     const ab_max  = Math.max(n(row.ab1), n(row.ab2), n(row.ab3));
     const gcd_max = Math.max(n(row.gcd1), n(row.gcd2));
     const conf    = getConfidence(ab_max, gcd_max);
@@ -351,36 +468,31 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
         <td><span class="ver-badge">${row.ver}</span></td>
         <td><span class="prefix-link">${escHtml(row.prefix)}</span>${row.partial ? ' <span class="tag tag-warn" title="Partial anycast: this /24 contains both unicast and anycast addresses">partial</span>' : ''}</td>
         <td><span class="confidence ${conf.cls}">${conf.label}</span></td>
-        <td class="${ab_max  ? 'count' : 'count-zero'}">AB&nbsp;${ab_max}</td>
-        <td class="${gcd_max ? 'count' : 'count-zero'}">GCD&nbsp;${gcd_max}</td>
-        <td>${nloc}</td>
+        <td class="${ab_max  ? 'count' : 'count-zero'}">AB&nbsp;${fmtN(ab_max)}</td>
+        <td class="${gcd_max ? 'count' : 'count-zero'}">GCD&nbsp;${fmtN(gcd_max)}</td>
+        <td>${fmtN(nloc)}</td>
         <td>${asns.map(a => `<span class="tag">AS${escHtml(a)}</span>`).join(' ')}</td>
       </tr>`;
   }).join('');
 
+  pgStore[id] = { rows, page: 0, pageSize, renderRows };
+  const initialBody = renderRows(rows.slice(0, pageSize));
+  const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+
   return `
-    <div class="card">
-      <div class="card-title">${rows.length} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} — ${escHtml(dateLabel)}</div>
-      ${moreNote}
+    <div class="card" data-pg-id="${id}">
+      <div class="card-title">${fmtN(rows.length)} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} \u2014 ${escHtml(dateLabel)}</div>
       <p class="loc-note">Click a prefix to see its full details.</p>
+      <div class="pg-controls-slot">${controls}</div>
       <table class="prefix-list">
         <thead><tr>
           <th></th><th>Prefix</th><th>Confidence</th>
           <th>AB sites</th><th>GCD sites</th><th>Loc</th><th>ASN(s)</th>
         </tr></thead>
-        <tbody>${tbody}</tbody>
+        <tbody>${initialBody}</tbody>
       </table>
+      <div class="pg-controls-slot">${controls}</div>
     </div>`;
-}
-
-function wirePrefixListClicks(viewKey, dateLabel) {
-  document.querySelectorAll('.pl-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const prefix = row.dataset.prefix;
-      inputEl.value = prefix;
-      lookupPrefix(prefix, viewKey, dateLabel);
-    });
-  });
 }
 
 function renderResult(row, isIPv6, locations, dateLabel) {
@@ -417,23 +529,23 @@ function renderResult(row, isIPv6, locations, dateLabel) {
         </tr>
         <tr>
           <td>Anycast-based ICMP (AB)</td>
-          <td class="${ab_icmp ? 'count' : 'count-zero'}">${ab_icmp}</td>
+          <td class="${ab_icmp ? 'count' : 'count-zero'}">${fmtN(ab_icmp)}</td>
         </tr>
         <tr>
           <td>Anycast-based TCP (AB)</td>
-          <td class="${ab_tcp ? 'count' : 'count-zero'}">${ab_tcp}</td>
+          <td class="${ab_tcp ? 'count' : 'count-zero'}">${fmtN(ab_tcp)}</td>
         </tr>
         <tr>
           <td>Anycast-based DNS (AB)</td>
-          <td class="${ab_dns ? 'count' : 'count-zero'}">${ab_dns}</td>
+          <td class="${ab_dns ? 'count' : 'count-zero'}">${fmtN(ab_dns)}</td>
         </tr>
         <tr>
           <td>Latency-based ICMP (GCD)</td>
-          <td class="${gcd_icmp ? 'count' : 'count-zero'}">${gcd_icmp}</td>
+          <td class="${gcd_icmp ? 'count' : 'count-zero'}">${fmtN(gcd_icmp)}</td>
         </tr>
         <tr>
           <td>Latency-based TCP (GCD)</td>
-          <td class="${gcd_tcp ? 'count' : 'count-zero'}">${gcd_tcp}</td>
+          <td class="${gcd_tcp ? 'count' : 'count-zero'}">${fmtN(gcd_tcp)}</td>
         </tr>
       </table>
     </div>
@@ -457,7 +569,7 @@ function renderResult(row, isIPv6, locations, dateLabel) {
     ${locations.length ? `
     <div class="card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
-        <span>Detected locations (${locations.length})</span>
+        <span>Detected locations (${fmtN(locations.length)})</span>
         <button id="loc-csv-btn" class="csv-btn">↓ CSV</button>
       </div>
       <p class="loc-note">Lower bound — actual number of PoPs may be higher.</p>
@@ -568,6 +680,8 @@ function parseLocations(raw) {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
+function fmtN(v) { return Number(v).toLocaleString(); }
+
 function fmtCoord(v) {
   if (v == null) return '?';
   return Number(v).toFixed(2);
@@ -586,18 +700,94 @@ document.getElementById('home-link').addEventListener('click', e => {
   e.preventDefault();
   inputEl.value = '';
   resultsEl.innerHTML = '';
+  resetPg();
+  if (isCompareMode) {
+    isCompareMode = false;
+    modeLookup.classList.add('active');
+    modeCompare.classList.remove('active');
+    lookupRow.style.display = '';
+    compareRow.style.display = 'none';
+  }
   setStatus('Ready.');
-  if (chartData) document.getElementById('chart-section').style.display = '';
   history.pushState(null, '', '.');
 });
 
 resultsEl.addEventListener('click', e => {
-  const el = e.target.closest('[data-lookup]');
-  if (!el) return;
-  e.preventDefault();
-  const q = el.dataset.lookup;
-  inputEl.value = q;
-  lookup(q);
+  // ── Confidence filter buttons ──
+  const confBtn = e.target.closest('.conf-filter-btn');
+  if (confBtn) {
+    const wrap = confBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    applyTableFilter(wrap.dataset.pgId, 'conf', confBtn.dataset.conf);
+    return;
+  }
+
+  // ── Protocol (v4/v6) filter buttons ──
+  const verBtn = e.target.closest('.ver-filter-btn');
+  if (verBtn) {
+    const wrap = verBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    applyTableFilter(wrap.dataset.pgId, 'ver', verBtn.dataset.ver);
+    return;
+  }
+
+  // ── Pagination prev / next ──
+  const pgBtn = e.target.closest('.pg-prev, .pg-next');
+  if (pgBtn) {
+    const wrap = pgBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    const id = wrap.dataset.pgId;
+    const st = pgStore[id];
+    if (!st) return;
+    const pages = Math.ceil(st.rows.length / st.pageSize) || 1;
+    if (pgBtn.classList.contains('pg-prev') && st.page > 0) st.page--;
+    else if (pgBtn.classList.contains('pg-next') && st.page < pages - 1) st.page++;
+    updatePgView(id);
+    return;
+  }
+
+  // ── Pagination page-size selector ──
+  const sizeBtn = e.target.closest('.pg-size-btn');
+  if (sizeBtn) {
+    const wrap = sizeBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    const id = wrap.dataset.pgId;
+    const st = pgStore[id];
+    if (!st) return;
+    st.pageSize = parseInt(sizeBtn.dataset.size);
+    st.page = 0;
+    updatePgView(id);
+    return;
+  }
+
+  // ── Prefix row click (lookup or compare) ──
+  const plRow = e.target.closest('.pl-row');
+  if (plRow) {
+    const prefix = plRow.dataset.prefix;
+    inputEl.value = prefix;
+    if (plRow.classList.contains('cmp-click') && currentCompareCtx) {
+      const { dateA, dateB } = currentCompareCtx;
+      const params = new URLSearchParams();
+      params.set('mode', 'compare');
+      params.set('dateA', dateA);
+      params.set('dateB', dateB);
+      params.set('q', prefix);
+      history.pushState({ mode: 'compare', dateA, dateB, q: prefix }, '',
+        '?' + params.toString());
+      comparePrefixDetail(prefix, dateA, dateB);
+    } else if (currentLookupCtx) {
+      lookup(prefix);
+    }
+    return;
+  }
+
+  // ── Clickable tags (ASN, backing prefix) in detail view ──
+  const lookupEl = e.target.closest('[data-lookup]');
+  if (lookupEl) {
+    e.preventDefault();
+    inputEl.value = lookupEl.dataset.lookup;
+    lookup(lookupEl.dataset.lookup);
+  }
 });
 
 searchBtn.addEventListener('click', () => lookup(inputEl.value));
@@ -619,12 +809,426 @@ document.querySelectorAll('input[name="when"]').forEach(radio => {
 // Clicking the date input automatically switches to the "date" radio
 dateInput.addEventListener('focus', () => { whenDate.checked = true; dateInput.disabled = false; });
 
+// ── Compare mode toggle ─────────────────────────────────────────────────────
+modeLookup.addEventListener('click', () => {
+  isCompareMode = false;
+  modeLookup.classList.add('active');
+  modeCompare.classList.remove('active');
+  lookupRow.style.display = '';
+  compareRow.style.display = 'none';
+});
+
+modeCompare.addEventListener('click', () => {
+  isCompareMode = true;
+  modeCompare.classList.add('active');
+  modeLookup.classList.remove('active');
+  lookupRow.style.display = 'none';
+  compareRow.style.display = '';
+});
+
+cmpBtn.addEventListener('click', () => runCompare());
+
+// ── Compare helpers ──────────────────────────────────────────────────────────
+async function registerCompareViews(dateA, dateB) {
+  const today = new Date().toISOString().slice(0, 10);
+  const keyA = dateA === 'latest' ? 'latest' : dateA.replace(/-/g, '/');
+  const keyB = dateB === 'latest' ? 'latest' : dateB.replace(/-/g, '/');
+
+  const urlA4 = keyA === 'latest' ? baseUrl + `IPv4-latest.parquet?v=${today}` : baseUrl + `${keyA}/IPv4.parquet`;
+  const urlA6 = keyA === 'latest' ? baseUrl + `IPv6-latest.parquet?v=${today}` : baseUrl + `${keyA}/IPv6.parquet`;
+  const urlB4 = keyB === 'latest' ? baseUrl + `IPv4-latest.parquet?v=${today}` : baseUrl + `${keyB}/IPv4.parquet`;
+  const urlB6 = keyB === 'latest' ? baseUrl + `IPv6-latest.parquet?v=${today}` : baseUrl + `${keyB}/IPv6.parquet`;
+
+  await conn.query(`CREATE OR REPLACE VIEW ipv4_a AS SELECT * FROM read_parquet('${urlA4}')`);
+  await conn.query(`CREATE OR REPLACE VIEW ipv6_a AS SELECT * FROM read_parquet('${urlA6}')`);
+  await conn.query(`CREATE OR REPLACE VIEW ipv4_b AS SELECT * FROM read_parquet('${urlB4}')`);
+  await conn.query(`CREATE OR REPLACE VIEW ipv6_b AS SELECT * FROM read_parquet('${urlB6}')`);
+}
+
 document.querySelectorAll('.examples span[data-prefix]').forEach(el => {
   el.addEventListener('click', () => {
     inputEl.value = el.dataset.prefix;
     lookup(el.dataset.prefix);
   });
 });
+
+// ── Compare logic ──────────────────────────────────────────────────────────
+async function runCompare({ updateUrl = true } = {}) {
+  const dateA = cmpDateA.value;
+  const dateB = cmpDateB.value;
+  if (!dateA || !dateB) { setStatus('Select two dates to compare.', true); return; }
+  if (dateA === dateB) { setStatus('Select two different dates.', true); return; }
+
+  const query = inputEl.value.trim();
+  resultsEl.innerHTML = '';
+  resetPg(); currentLookupCtx = null;
+
+  if (updateUrl) {
+    const params = new URLSearchParams();
+    params.set('mode', 'compare');
+    params.set('dateA', dateA);
+    params.set('dateB', dateB);
+    if (query) params.set('q', query);
+    history.pushState({ mode: 'compare', dateA, dateB, q: query || null }, '',
+      '?' + params.toString());
+  }
+
+  setStatus(`Loading data for ${dateA} and ${dateB}\u2026`);
+  try {
+    await registerCompareViews(dateA, dateB);
+  } catch (err) {
+    setStatus('Failed to load data for one or both dates: ' + (err.message ?? ''), true);
+    return;
+  }
+
+  if (query) {
+    // Prefix-level compare
+    await comparePrefixDetail(query, dateA, dateB);
+  } else {
+    // Full census compare
+    await compareCensus(dateA, dateB);
+  }
+}
+
+async function compareCensus(dateA, dateB) {
+  setStatus(`Comparing ${dateA} vs ${dateB}…`);
+  try {
+    // Helper: compute confidence columns inline via SQL
+    const confExpr = (ab1, ab2, ab3, gcd1, gcd2) =>
+      `CASE WHEN GREATEST(${gcd1},${gcd2}) > 1 THEN 'high'
+            WHEN GREATEST(${ab1},${ab2},${ab3}) > 2 THEN 'medium'
+            ELSE 'low' END AS conf`;
+
+    // Both dates
+    const bothRes = await conn.query(`
+      SELECT 'v4' AS ver, a.prefix,
+        ${confExpr('a.AB_ICMPv4','a.AB_TCPv4','a.AB_DNSv4','a.GCD_ICMPv4','a.GCD_TCPv4')}
+      FROM ipv4_a a INNER JOIN ipv4_b b ON a.prefix = b.prefix
+      UNION ALL
+      SELECT 'v6', a.prefix,
+        ${confExpr('a.AB_ICMPv6','a.AB_TCPv6','a.AB_DNSv6','a.GCD_ICMPv6','a.GCD_TCPv6')}
+      FROM ipv6_a a INNER JOIN ipv6_b b ON a.prefix = b.prefix
+      ORDER BY prefix
+    `);
+    const both = bothRes.toArray().map(r => r.toJSON());
+
+    // Only in A
+    const onlyARes = await conn.query(`
+      SELECT 'v4' AS ver, a.prefix,
+        ${confExpr('a.AB_ICMPv4','a.AB_TCPv4','a.AB_DNSv4','a.GCD_ICMPv4','a.GCD_TCPv4')}
+      FROM ipv4_a a LEFT JOIN ipv4_b b ON a.prefix = b.prefix WHERE b.prefix IS NULL
+      UNION ALL
+      SELECT 'v6', a.prefix,
+        ${confExpr('a.AB_ICMPv6','a.AB_TCPv6','a.AB_DNSv6','a.GCD_ICMPv6','a.GCD_TCPv6')}
+      FROM ipv6_a a LEFT JOIN ipv6_b b ON a.prefix = b.prefix WHERE b.prefix IS NULL
+      ORDER BY prefix
+    `);
+    const onlyA = onlyARes.toArray().map(r => r.toJSON());
+
+    // Only in B
+    const onlyBRes = await conn.query(`
+      SELECT 'v4' AS ver, b.prefix,
+        ${confExpr('b.AB_ICMPv4','b.AB_TCPv4','b.AB_DNSv4','b.GCD_ICMPv4','b.GCD_TCPv4')}
+      FROM ipv4_b b LEFT JOIN ipv4_a a ON b.prefix = a.prefix WHERE a.prefix IS NULL
+      UNION ALL
+      SELECT 'v6', b.prefix,
+        ${confExpr('b.AB_ICMPv6','b.AB_TCPv6','b.AB_DNSv6','b.GCD_ICMPv6','b.GCD_TCPv6')}
+      FROM ipv6_b b LEFT JOIN ipv6_a a ON b.prefix = a.prefix WHERE a.prefix IS NULL
+      ORDER BY prefix
+    `);
+    const onlyB = onlyBRes.toArray().map(r => r.toJSON());
+
+    setStatus('');
+    resultsEl.innerHTML = renderCompareResults(both, onlyA, onlyB, dateA, dateB);
+    currentCompareCtx = { dateA, dateB };
+  } catch (err) { setStatus('Compare error: ' + (err.message ?? ''), true); }
+}
+
+async function comparePrefixDetail(raw, dateA, dateB) {
+  let prefix = raw.trim();
+  // Bare IPv4 → /24
+  const bareV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(prefix);
+  if (bareV4) prefix = `${bareV4[1]}.${bareV4[2]}.${bareV4[3]}.0/24`;
+  // Bare IPv6 → /48
+  if (prefix.includes(':') && !prefix.includes('/')) {
+    try { prefix = ipv6ToSlash48(prefix); } catch { setStatus('Invalid IPv6 address.', true); return; }
+  }
+
+  const isIPv6 = prefix.includes(':');
+  const viewA = isIPv6 ? 'ipv6_a' : 'ipv4_a';
+  const viewB = isIPv6 ? 'ipv6_b' : 'ipv4_b';
+  const safe = prefix.replace(/'/g, "''");
+
+  setStatus(`Comparing ${prefix} between ${dateA} and ${dateB}…`);
+  try {
+    const resA = await conn.query(`SELECT * FROM ${viewA} WHERE prefix = '${safe}'`);
+    const resB = await conn.query(`SELECT * FROM ${viewB} WHERE prefix = '${safe}'`);
+    const rowsA = resA.toArray().map(r => r.toJSON());
+    const rowsB = resB.toArray().map(r => r.toJSON());
+
+    if (!rowsA.length && !rowsB.length) {
+      setStatus('');
+      resultsEl.innerHTML = `<div class="not-found">Prefix <strong>${escHtml(prefix)}</strong> not found in either date.</div>`;
+      return;
+    }
+
+    const rowA = rowsA[0] ?? null;
+    const rowB = rowsB[0] ?? null;
+    const locsA = rowA ? parseLocations(rowA.locations) : [];
+    const locsB = rowB ? parseLocations(rowB.locations) : [];
+
+    setStatus('');
+    resultsEl.innerHTML = renderPrefixCompare(prefix, rowA, rowB, locsA, locsB, isIPv6, dateA, dateB);
+    initCompareMap(locsA, locsB);
+  } catch (err) { setStatus('Compare error: ' + (err.message ?? ''), true); }
+}
+
+// ── Compare rendering ─────────────────────────────────────────────────────
+function renderCompareResults(both, onlyA, onlyB, dateA, dateB) {
+  function prefixTable(rows) {
+    if (!rows.length) return '<p class="loc-note">None.</p>';
+    const id = `pg${++pgCounter}`;
+    const pageSize = 10;
+    const renderRows = (slice) => slice.map(r => {
+      const cc = r.conf === 'high' ? 'conf-col-high' : r.conf === 'medium' ? 'conf-col-medium' : 'conf-col-low';
+      const cl = r.conf === 'high' ? 'High' : r.conf === 'medium' ? 'Medium' : 'Low';
+      return `<tr class="pl-row cmp-click" data-prefix="${escHtml(r.prefix)}">
+        <td><span class="ver-badge">${r.ver}</span></td>
+        <td><span class="prefix-link">${escHtml(r.prefix)}</span></td>
+        <td><span class="conf-col ${cc}">${cl}</span></td>
+      </tr>`;
+    }).join('');
+    // Count by confidence and protocol for filter buttons
+    let cH = 0, cM = 0, cL = 0, nV4 = 0, nV6 = 0;
+    for (const r of rows) {
+      if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
+      if (r.ver === 'v4') nV4++; else nV6++;
+    }
+    pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, confFilter: 'all', verFilter: 'all' };
+    const initialBody = renderRows(rows.slice(0, pageSize));
+    const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+    const filterBar = `<div class="conf-filter">
+      <span class="conf-filter-lbl">Protocol:</span>
+      <button class="ver-filter-btn active" data-ver="all">All (${fmtN(rows.length)})</button>
+      <button class="ver-filter-btn" data-ver="v4">IPv4 (${fmtN(nV4)})</button>
+      <button class="ver-filter-btn" data-ver="v6">IPv6 (${fmtN(nV6)})</button>
+      <span class="pg-sep">\u00B7</span>
+      <span class="conf-filter-lbl">Confidence:</span>
+      <button class="conf-filter-btn active" data-conf="all">All</button>
+      <button class="conf-filter-btn" data-conf="high">High (${fmtN(cH)})</button>
+      <button class="conf-filter-btn" data-conf="medium">Med (${fmtN(cM)})</button>
+      <button class="conf-filter-btn" data-conf="low">Low (${fmtN(cL)})</button>
+      <span class="pg-sep">\u00B7</span>
+      <span class="conf-filter-count">${fmtN(rows.length)} shown</span>
+    </div>`;
+    return `<div data-pg-id="${id}">
+      ${filterBar}
+      <div class="pg-controls-slot">${controls}</div>
+      <table class="prefix-list"><thead><tr><th></th><th>Prefix</th><th>Confidence</th></tr></thead><tbody>${initialBody}</tbody></table>
+      <div class="pg-controls-slot">${controls}</div>
+    </div>`;
+  }
+
+  // Split by protocol
+  const split = (arr) => {
+    const v4 = arr.filter(r => r.ver === 'v4');
+    const v6 = arr.filter(r => r.ver === 'v6');
+    return { v4, v6 };
+  };
+  const bS = split(both), aS = split(onlyA), bSo = split(onlyB);
+
+  // Confidence breakdown
+  const confBreakdown = (arr) => {
+    let high = 0, medium = 0, low = 0;
+    for (const r of arr) {
+      if (r.conf === 'high') high++;
+      else if (r.conf === 'medium') medium++;
+      else low++;
+    }
+    return { high, medium, low };
+  };
+
+  function confBadges(cb) {
+    return `<span class="confidence confidence-high" style="font-size:0.7rem;padding:0.1rem 0.35rem">${fmtN(cb.high)}</span> `
+         + `<span class="confidence confidence-medium" style="font-size:0.7rem;padding:0.1rem 0.35rem">${fmtN(cb.medium)}</span> `
+         + `<span class="confidence confidence-low" style="font-size:0.7rem;padding:0.1rem 0.35rem">${fmtN(cb.low)}</span>`;
+  }
+
+  function statsTable(label, v4arr, v6arr) {
+    const v4c = confBreakdown(v4arr), v6c = confBreakdown(v6arr);
+    return `<tr>
+      <td>${label}</td>
+      <td class="count">${fmtN(v4arr.length + v6arr.length)}</td>
+      <td class="count">${fmtN(v4arr.length)}</td><td>${confBadges(v4c)}</td>
+      <td class="count">${fmtN(v6arr.length)}</td><td>${confBadges(v6c)}</td>
+    </tr>`;
+  }
+
+  return `
+    <div class="card">
+      <div class="card-title">Census comparison: ${escHtml(dateA)} vs ${escHtml(dateB)}</div>
+      <table style="margin-bottom:1rem;font-size:0.82rem">
+        <thead><tr>
+          <th></th><th>Total</th>
+          <th>IPv4</th><th>Confidence</th>
+          <th>IPv6</th><th>Confidence</th>
+        </tr></thead>
+        <tbody>
+          ${statsTable(`<span class="cmp-dot cmp-dot-both"></span> In both`, bS.v4, bS.v6)}
+          ${statsTable(`<span class="cmp-dot cmp-dot-onlyA"></span> Only ${escHtml(dateA)}`, aS.v4, aS.v6)}
+          ${statsTable(`<span class="cmp-dot cmp-dot-onlyB"></span> Only ${escHtml(dateB)}`, bSo.v4, bSo.v6)}
+        </tbody>
+      </table>
+      <p class="loc-note">Confidence: <span class="confidence confidence-high" style="font-size:0.68rem;padding:0.05rem 0.3rem">high</span>
+        <span class="confidence confidence-medium" style="font-size:0.68rem;padding:0.05rem 0.3rem">medium</span>
+        <span class="confidence confidence-low" style="font-size:0.68rem;padding:0.05rem 0.3rem">low</span>.
+        Enter a prefix in the search box and click Compare to see per-prefix differences.</p>
+    </div>
+
+    <div class="card">
+      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-onlyA"></span> Only in ${escHtml(dateA)} (${fmtN(onlyA.length)})</div>
+      ${prefixTable(onlyA)}
+    </div>
+
+    <div class="card">
+      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-onlyB"></span> Only in ${escHtml(dateB)} (${fmtN(onlyB.length)})</div>
+      ${prefixTable(onlyB)}
+    </div>
+
+    <div class="card">
+      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-both"></span> In both dates (${fmtN(both.length)})</div>
+      ${prefixTable(both)}
+    </div>`;
+}
+
+function renderPrefixCompare(prefix, rowA, rowB, locsA, locsB, isIPv6, dateA, dateB) {
+  const suffix = isIPv6 ? 'v6' : 'v4';
+  const n = v => Number(v ?? 0);
+  const fields = [
+    { key: `AB_ICMP${suffix}`,  label: 'AB ICMP' },
+    { key: `AB_TCP${suffix}`,   label: 'AB TCP' },
+    { key: `AB_DNS${suffix}`,   label: 'AB DNS' },
+    { key: `GCD_ICMP${suffix}`, label: 'GCD ICMP' },
+    { key: `GCD_TCP${suffix}`,  label: 'GCD TCP' },
+  ];
+
+  function diffCell(valA, valB) {
+    const d = valB - valA;
+    if (d > 0) return `<span class="cmp-val-up">+${fmtN(d)}</span>`;
+    if (d < 0) return `<span class="cmp-val-down">\u2212${fmtN(Math.abs(d))}</span>`;
+    return `<span class="cmp-val-same">—</span>`;
+  }
+
+  const detRows = fields.map(f => {
+    const vA = rowA ? n(rowA[f.key]) : 0;
+    const vB = rowB ? n(rowB[f.key]) : 0;
+    return `<tr>
+      <td>${f.label}</td>
+      <td class="${vA ? 'count' : 'count-zero'}">${fmtN(vA)}</td>
+      <td class="${vB ? 'count' : 'count-zero'}">${fmtN(vB)}</td>
+      <td>${diffCell(vA, vB)}</td>
+    </tr>`;
+  }).join('');
+
+  const presenceNote = !rowA
+    ? `<p class="loc-note" style="color:#3fb950">This prefix only appears in <strong>${escHtml(dateB)}</strong>.</p>`
+    : !rowB
+    ? `<p class="loc-note" style="color:#d29922">This prefix only appears in <strong>${escHtml(dateA)}</strong>.</p>`
+    : '';
+
+  // Location sets
+  const locKeyA = new Set(locsA.map(l => `${l.lat},${l.lon}`));
+  const locKeyB = new Set(locsB.map(l => `${l.lat},${l.lon}`));
+  const locBoth = locsA.filter(l => locKeyB.has(`${l.lat},${l.lon}`));
+  const locOnlyA = locsA.filter(l => !locKeyB.has(`${l.lat},${l.lon}`));
+  const locOnlyB = locsB.filter(l => !locKeyA.has(`${l.lat},${l.lon}`));
+
+  function locGrid(locs, dotClass) {
+    if (!locs.length) return '<p class="loc-note">None.</p>';
+    return `<div class="loc-grid">${locs.map(loc => `
+      <div class="loc-card">
+        <div class="loc-iata"><span class="cmp-dot ${dotClass}" style="margin-right:0.3rem"></span>${escHtml(loc.id ?? '?')}</div>
+        <div class="loc-city">${escHtml(loc.city ?? '')}${loc.country_code ? `, ${escHtml(loc.country_code)}` : ''}</div>
+        <div class="loc-coords">${fmtCoord(loc.lat)}, ${fmtCoord(loc.lon)}</div>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  return `
+    <div class="card">
+      <div class="card-title">Prefix comparison: ${escHtml(dateA)} vs ${escHtml(dateB)}</div>
+      <div class="prefix-badge">${escHtml(prefix)}</div>
+      ${presenceNote}
+      <table class="cmp-diff-table">
+        <thead><tr><th>Method</th><th>${escHtml(dateA)}</th><th>${escHtml(dateB)}</th><th>Δ</th></tr></thead>
+        <tbody>${detRows}</tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Location comparison</div>
+      <p class="loc-note">
+        <span class="cmp-dot cmp-dot-both"></span> Both (${fmtN(locBoth.length)}) &nbsp;
+        <span class="cmp-dot cmp-dot-onlyA"></span> Only ${escHtml(dateA)} (${fmtN(locOnlyA.length)}) &nbsp;
+        <span class="cmp-dot cmp-dot-onlyB"></span> Only ${escHtml(dateB)} (${fmtN(locOnlyB.length)})
+      </p>
+      <div id="loc-map"></div>
+      ${locBoth.length ? `<div class="cmp-section-title" style="margin-top:0.75rem"><span class="cmp-dot cmp-dot-both"></span> Both dates (${fmtN(locBoth.length)})</div>${locGrid(locBoth, 'cmp-dot-both')}` : ''}
+      ${locOnlyA.length ? `<div class="cmp-section-title" style="margin-top:0.75rem"><span class="cmp-dot cmp-dot-onlyA"></span> Only ${escHtml(dateA)} (${fmtN(locOnlyA.length)})</div>${locGrid(locOnlyA, 'cmp-dot-onlyA')}` : ''}
+      ${locOnlyB.length ? `<div class="cmp-section-title" style="margin-top:0.75rem"><span class="cmp-dot cmp-dot-onlyB"></span> Only ${escHtml(dateB)} (${fmtN(locOnlyB.length)})</div>${locGrid(locOnlyB, 'cmp-dot-onlyB')}` : ''}
+    </div>`;
+}
+
+function initCompareMap(locsA, locsB) {
+  const el = document.getElementById('loc-map');
+  if (!el) return;
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+
+  leafletMap = L.map('loc-map', {
+    zoomControl: true,
+    worldCopyJump: false,
+    maxBounds: [[-58, -180], [85, 180]],
+    maxBoundsViscosity: 1.0,
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd', maxZoom: 19, noWrap: true,
+  }).addTo(leafletMap);
+
+  const locKeyA = new Set(locsA.map(l => `${l.lat},${l.lon}`));
+  const locKeyB = new Set(locsB.map(l => `${l.lat},${l.lon}`));
+
+  const markers = [];
+
+  function addMarkers(locs, fillColor, borderColor, labelSuffix) {
+    for (const loc of locs) {
+      if (loc.lat == null || loc.lon == null) continue;
+      const name = (!loc.city || loc.id === 'NoCity')
+        ? `Unknown (${fmtCoord(loc.lat)}, ${fmtCoord(loc.lon)})`
+        : `${loc.city}, ${loc.country_code} — ${loc.id}`;
+      markers.push(
+        L.circleMarker([loc.lat, loc.lon], {
+          radius: 6, fillColor, color: borderColor, weight: 1.5, opacity: 1, fillOpacity: 0.85,
+        }).bindTooltip(`${name} ${labelSuffix}`).addTo(leafletMap)
+      );
+    }
+  }
+
+  // Both (blue)
+  const both = locsA.filter(l => locKeyB.has(`${l.lat},${l.lon}`));
+  addMarkers(both, '#58a6ff', '#1f6feb', '(both)');
+  // Only A (green)
+  const onlyA = locsA.filter(l => !locKeyB.has(`${l.lat},${l.lon}`));
+  addMarkers(onlyA, '#3fb950', '#238636', '(A only)');
+  // Only B (orange)
+  const onlyB = locsB.filter(l => !locKeyA.has(`${l.lat},${l.lon}`));
+  addMarkers(onlyB, '#d29922', '#b45309', '(B only)');
+
+  if (markers.length) {
+    leafletMap.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
+  }
+}
 
 // ── Chart ──────────────────────────────────────────────────────────────────
 const CHART_SERIES = {
@@ -655,9 +1259,7 @@ async function initChart() {
     const res = await fetch(baseUrl + `stats-history.json?v=${today}`);
     if (!res.ok) return;
     chartData = await res.json();
-    if (!new URLSearchParams(window.location.search).get('q')) {
-      document.getElementById('chart-section').style.display = '';
-    }
+    document.getElementById('chart-section').style.display = '';
     buildLegend();
     drawChart();
     setupChartEvents();
