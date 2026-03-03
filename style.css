@@ -330,6 +330,27 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
 }
 .leaflet-fs-btn:hover { background: #21262d !important; }
 
+.as-stats-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+.as-stats-table th {
+  color: #8b949e;
+  font-weight: 500;
+  padding: 0.2rem 1.5rem 0.2rem 0;
+  text-align: left;
+  border-bottom: 1px solid #21262d;
+}
+.as-stats-table td {
+  padding: 0.35rem 1.5rem 0.35rem 0;
+  border-bottom: 1px solid #21262d;
+  color: #e6edf3;
+}
+.as-stats-table tbody tr:last-child td { border-bottom: none; }
+.stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-note { color: #8b949e; font-size: 0.78em; font-weight: 400; }
+
 .prefix-list {
   width: 100%;
   border-collapse: collapse;
@@ -354,6 +375,11 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
 
 .prefix-list tbody tr { cursor: pointer; }
 .prefix-list tbody tr:hover { background: #1c2128; }
+
+.prefix-list th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+.prefix-list th[data-sort]:hover { color: #e6edf3; }
+.prefix-list th.sort-active { color: #e6edf3; }
+.sort-ind { margin-left: 0.2em; font-size: 0.8em; }
 
 .prefix-link { color: #58a6ff; font-weight: 600; }
 
@@ -678,12 +704,18 @@ pre.bibtex {
 /* ── Confidence filter buttons ── */
 .conf-filter {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+  flex-direction: column;
+  gap: 0.3rem;
   margin-bottom: 0.5rem;
   font-size: 0.75rem;
   color: #8b949e;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 .conf-filter-lbl { color: #484f58; }
