@@ -48,8 +48,48 @@
       <button id="cmp-btn" class="cmp-btn">Compare</button>
     </div>
 
+    <div class="examples" id="examples" style="display:none">
+      Try: <span data-prefix="1.1.1.0/24">1.1.1.0/24</span> &nbsp;·&nbsp;
+      <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;·&nbsp;
+      <span data-prefix="AS13335">AS13335</span> &nbsp;·&nbsp;
+      <span data-prefix="2606:4700::/48">2606:4700::/48</span>
+    </div>
+
     <div class="status" id="status">Loading query engine…</div>
     <div id="results"></div>
+
+    <div class="card" id="as-stats-section" style="display:none;margin-bottom:1.5rem">
+      <div class="card-title">Network statistics — latest census</div>
+      <table class="as-stats-table">
+        <thead>
+          <tr><th></th><th>IPv4</th><th>IPv6</th><th>Combined</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Anycast ASes <span class="stat-note">(high confidence)</span></td>
+            <td id="as-stat-v4"   class="stat-val">—</td>
+            <td id="as-stat-v6"   class="stat-val">—</td>
+            <td id="as-stat-comb" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>ASes with both IPv4 &amp; IPv6 <span class="stat-note">(high confidence)</span></td>
+            <td id="as-stat-both" class="stat-val" colspan="3">—</td>
+          </tr>
+          <tr>
+            <td>MOAS prefixes</td>
+            <td id="moas-stat-v4"   class="stat-val">—</td>
+            <td id="moas-stat-v6"   class="stat-val">—</td>
+            <td id="moas-stat-comb" class="stat-val">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" id="as-table-section" style="display:none;margin-bottom:1.5rem">
+      <div class="card-title">ASes deploying high-confidence anycast</div>
+      <p class="loc-note">Click an AS to look it up.</p>
+      <div id="as-table-body"></div>
+    </div>
 
     <div class="card" id="chart-section" style="display:none;margin-bottom:1.5rem">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
@@ -64,13 +104,6 @@
       </div>
       <canvas id="chart-canvas" style="width:100%;height:260px;display:block;cursor:crosshair"></canvas>
       <div id="chart-legend" class="chart-legend"></div>
-    </div>
-
-    <div class="examples" id="examples" style="display:none">
-      Try: <span data-prefix="1.1.1.0/24">1.1.1.0/24</span> &nbsp;·&nbsp;
-      <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;·&nbsp;
-      <span data-prefix="AS13335">AS13335</span> &nbsp;·&nbsp;
-      <span data-prefix="2606:4700::/48">2606:4700::/48</span>
     </div>
 
     <div class="doc-section">

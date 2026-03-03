@@ -5,7 +5,10 @@ const statusEl   = document.getElementById('status');
 const resultsEl  = document.getElementById('results');
 const searchBtn  = document.getElementById('search-btn');
 const inputEl    = document.getElementById('prefix-input');
-const examplesEl = document.getElementById('examples');
+const examplesEl       = document.getElementById('examples');
+const chartSection     = document.getElementById('chart-section');
+const asStatsSectionEl = document.getElementById('as-stats-section');
+const asTableSectionEl = document.getElementById('as-table-section');
 const dateInput  = document.getElementById('date-input');
 const whenLatest  = document.getElementById('when-latest');
 const whenDate    = document.getElementById('when-date');
@@ -84,6 +87,8 @@ try {
   setStatus('Ready.');
   searchBtn.disabled = false;
   examplesEl.style.display = '';
+  initASStats();
+  initASTable();
 
   // Auto-run lookup / compare if URL has query params
   const initParams = new URLSearchParams(window.location.search);
@@ -199,6 +204,9 @@ async function lookup(raw, { updateUrl = true } = {}) {
   const dateLabel = viewKey === 'latest' ? 'latest' : viewKey.replace(/\//g, '-');
   resultsEl.innerHTML = '';
   resetPg(); currentCompareCtx = null;
+  chartSection.style.display = 'none';
+  asStatsSectionEl.style.display = 'none';
+  asTableSectionEl.style.display = 'none';
 
   if (updateUrl) {
     const params = new URLSearchParams({ q: input });
@@ -401,9 +409,11 @@ function pgControlsHtml(id, total, page, pageSize) {
   const sizes = [10, 25, 50, 100];
   return `<div class="pg-ctrl">
     <span class="pg-info">${fmtN(start)}\u2013${fmtN(end)} of ${fmtN(total)}</span>
-    <button class="pg-prev pg-btn" ${page === 0 ? 'disabled' : ''} title="Previous page">\u2039</button>
+    <button class="pg-first pg-btn" ${page === 0 ? 'disabled' : ''} title="First page">\u00AB</button>
+    <button class="pg-prev pg-btn"  ${page === 0 ? 'disabled' : ''} title="Previous page">\u2039</button>
     <span class="pg-page">${page + 1} / ${pages}</span>
-    <button class="pg-next pg-btn" ${page >= pages - 1 ? 'disabled' : ''} title="Next page">\u203A</button>
+    <button class="pg-next pg-btn"  ${page >= pages - 1 ? 'disabled' : ''} title="Next page">\u203A</button>
+    <button class="pg-last pg-btn"  ${page >= pages - 1 ? 'disabled' : ''} title="Last page">\u00BB</button>
     <span class="pg-sep">\u00B7</span>
     <span class="pg-size-lbl">Per page</span>
     ${sizes.map(s => `<button class="pg-size-btn${s === pageSize ? ' active' : ''}" data-size="${s}">${s}</button>`).join('')}
@@ -430,12 +440,13 @@ function applyTableFilter(id, filterType, value) {
   if (!st || !st.allRows) return;
   if (filterType === 'conf') st.confFilter = value;
   else if (filterType === 'ver') st.verFilter = value;
-  // Apply both filters
+  // Apply both filters then re-apply active sort
   st.rows = st.allRows.filter(r => {
     if (st.confFilter !== 'all' && r.conf !== st.confFilter) return false;
     if (st.verFilter  !== 'all' && r.ver  !== st.verFilter)  return false;
     return true;
   });
+  st.rows = sortRows(st.rows, st.sortCol, st.sortAsc);
   st.page = 0;
   updatePgView(id);
   // Update filter button active states
@@ -450,6 +461,64 @@ function applyTableFilter(id, filterType, value) {
   // Update count display
   const countEl = wrap.querySelector('.conf-filter-count');
   if (countEl) countEl.textContent = `${fmtN(st.rows.length)} shown`;
+  // Recompute confidence counts for the active ver filter
+  if (filterType === 'ver') {
+    const verFiltered = st.allRows.filter(r => st.verFilter === 'all' || r.ver === st.verFilter);
+    let cH = 0, cM = 0, cL = 0;
+    for (const r of verFiltered) {
+      if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
+    }
+    wrap.querySelectorAll('.conf-filter-btn').forEach(btn => {
+      if      (btn.dataset.conf === 'high')   btn.textContent = `High (${fmtN(cH)})`;
+      else if (btn.dataset.conf === 'medium') btn.textContent = `Med (${fmtN(cM)})`;
+      else if (btn.dataset.conf === 'low')    btn.textContent = `Low (${fmtN(cL)})`;
+    });
+  }
+}
+
+function sortRows(rows, col, asc) {
+  if (!col) return rows;
+  const confOrder = { high: 2, medium: 1, low: 0 };
+  const dir = asc ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let av, bv;
+    if      (col === 'conf')   { av = confOrder[a.conf] ?? 0; bv = confOrder[b.conf] ?? 0; }
+    else if (col === 'ab')     { av = a.ab_max;  bv = b.ab_max; }
+    else if (col === 'gcd')    { av = a.gcd_max; bv = b.gcd_max; }
+    else if (col === 'nloc')   { av = Number(a.nloc ?? 0); bv = Number(b.nloc ?? 0); }
+    else if (col === 'ver')    { av = a.ver;     bv = b.ver; }
+    else if (col === 'prefix') { av = a.prefix;  bv = b.prefix; }
+    else if (col === 'n4')     { av = a.n4;      bv = b.n4; }
+    else if (col === 'n6')     { av = a.n6;      bv = b.n6; }
+    else if (col === 'total')  { av = a.total;   bv = b.total; }
+    else if (col === 'asn')    { av = a.asn;     bv = b.asn; }
+    if (av < bv) return -dir;
+    if (av > bv) return  dir;
+    return 0;
+  });
+}
+
+function applySort(id, col) {
+  const st = pgStore[id];
+  if (!st) return;
+  const defaultDesc = new Set(['ab', 'gcd', 'nloc', 'conf', 'n4', 'n6', 'total']);
+  if (st.sortCol === col) {
+    st.sortAsc = !st.sortAsc;
+  } else {
+    st.sortCol = col;
+    st.sortAsc = !defaultDesc.has(col);
+  }
+  st.rows = sortRows(st.rows, st.sortCol, st.sortAsc);
+  st.page = 0;
+  updatePgView(id);
+  const wrap = document.querySelector(`[data-pg-id="${id}"]`);
+  if (!wrap) return;
+  wrap.querySelectorAll('th[data-sort]').forEach(th => {
+    const active = th.dataset.sort === st.sortCol;
+    th.classList.toggle('sort-active', active);
+    const ind = th.querySelector('.sort-ind');
+    if (ind) ind.textContent = active ? (st.sortAsc ? '\u2191' : '\u2193') : '';
+  });
 }
 
 function renderPrefixList(rows, searchTerm, dateLabel) {
@@ -461,7 +530,6 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
     const ab_max  = Math.max(n(row.ab1), n(row.ab2), n(row.ab3));
     const gcd_max = Math.max(n(row.gcd1), n(row.gcd2));
     const conf    = getConfidence(ab_max, gcd_max);
-    const nloc    = n(row.nloc);
     const asns    = (row.ASN ?? '').toString().split('_').filter(Boolean);
     return `
       <tr class="pl-row" data-prefix="${escHtml(row.prefix)}">
@@ -470,24 +538,59 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
         <td><span class="confidence ${conf.cls}">${conf.label}</span></td>
         <td class="${ab_max  ? 'count' : 'count-zero'}">AB&nbsp;${fmtN(ab_max)}</td>
         <td class="${gcd_max ? 'count' : 'count-zero'}">GCD&nbsp;${fmtN(gcd_max)}</td>
-        <td>${fmtN(nloc)}</td>
         <td>${asns.map(a => `<span class="tag">AS${escHtml(a)}</span>`).join(' ')}</td>
       </tr>`;
   }).join('');
 
-  pgStore[id] = { rows, page: 0, pageSize, renderRows };
+  // Pre-compute derived fields for filtering and sorting
+  for (const row of rows) {
+    const ab_max  = Math.max(n(row.ab1), n(row.ab2), n(row.ab3));
+    const gcd_max = Math.max(n(row.gcd1), n(row.gcd2));
+    row.conf    = gcd_max > 1 ? 'high' : ab_max > 2 ? 'medium' : 'low';
+    row.ab_max  = ab_max;
+    row.gcd_max = gcd_max;
+  }
+  let nV4 = 0, nV6 = 0, cH = 0, cM = 0, cL = 0;
+  for (const r of rows) {
+    if (r.ver === 'v4') nV4++; else nV6++;
+    if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
+  }
+
+  pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, confFilter: 'all', verFilter: 'all', sortCol: null, sortAsc: true };
   const initialBody = renderRows(rows.slice(0, pageSize));
   const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+  const filterBar = `<div class="conf-filter">
+    <div class="filter-row">
+      <span class="conf-filter-lbl">Protocol:</span>
+      <button class="ver-filter-btn active" data-ver="all">All (${fmtN(rows.length)})</button>
+      <button class="ver-filter-btn" data-ver="v4">IPv4 (${fmtN(nV4)})</button>
+      <button class="ver-filter-btn" data-ver="v6">IPv6 (${fmtN(nV6)})</button>
+      <span class="pg-sep">\u00B7</span>
+      <span class="conf-filter-count">${fmtN(rows.length)} shown</span>
+    </div>
+    <div class="filter-row">
+      <span class="conf-filter-lbl">Confidence:</span>
+      <button class="conf-filter-btn active" data-conf="all">All</button>
+      <button class="conf-filter-btn" data-conf="high">High (${fmtN(cH)})</button>
+      <button class="conf-filter-btn" data-conf="medium">Med (${fmtN(cM)})</button>
+      <button class="conf-filter-btn" data-conf="low">Low (${fmtN(cL)})</button>
+    </div>
+  </div>`;
 
   return `
     <div class="card" data-pg-id="${id}">
-      <div class="card-title">${fmtN(rows.length)} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} \u2014 ${escHtml(dateLabel)}</div>
+      <div class="card-title">${fmtN(rows.length)} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} \u2014 ${escHtml(dateLabel)} <span style="font-weight:400;text-transform:none;letter-spacing:0">(${fmtN(nV4)} IPv4, ${fmtN(nV6)} IPv6)</span></div>
       <p class="loc-note">Click a prefix to see its full details.</p>
+      ${filterBar}
       <div class="pg-controls-slot">${controls}</div>
       <table class="prefix-list">
         <thead><tr>
-          <th></th><th>Prefix</th><th>Confidence</th>
-          <th>AB sites</th><th>GCD sites</th><th>Loc</th><th>ASN(s)</th>
+          <th data-sort="ver">Ver<span class="sort-ind"></span></th>
+          <th data-sort="prefix">Prefix<span class="sort-ind"></span></th>
+          <th data-sort="conf">Confidence<span class="sort-ind"></span></th>
+          <th data-sort="ab">AB sites<span class="sort-ind"></span></th>
+          <th data-sort="gcd">GCD sites<span class="sort-ind"></span></th>
+          <th>ASN(s)</th>
         </tr></thead>
         <tbody>${initialBody}</tbody>
       </table>
@@ -701,6 +804,9 @@ document.getElementById('home-link').addEventListener('click', e => {
   inputEl.value = '';
   resultsEl.innerHTML = '';
   resetPg();
+  if (chartData) chartSection.style.display = '';
+  if (asStatsReady) asStatsSectionEl.style.display = '';
+  if (asTableReady) asTableSectionEl.style.display = '';
   if (isCompareMode) {
     isCompareMode = false;
     modeLookup.classList.add('active');
@@ -713,6 +819,15 @@ document.getElementById('home-link').addEventListener('click', e => {
 });
 
 resultsEl.addEventListener('click', e => {
+  // ── Sortable column headers ──
+  const sortTh = e.target.closest('th[data-sort]');
+  if (sortTh) {
+    const wrap = sortTh.closest('[data-pg-id]');
+    if (!wrap) return;
+    applySort(wrap.dataset.pgId, sortTh.dataset.sort);
+    return;
+  }
+
   // ── Confidence filter buttons ──
   const confBtn = e.target.closest('.conf-filter-btn');
   if (confBtn) {
@@ -731,8 +846,8 @@ resultsEl.addEventListener('click', e => {
     return;
   }
 
-  // ── Pagination prev / next ──
-  const pgBtn = e.target.closest('.pg-prev, .pg-next');
+  // ── Pagination first / prev / next / last ──
+  const pgBtn = e.target.closest('.pg-first, .pg-prev, .pg-next, .pg-last');
   if (pgBtn) {
     const wrap = pgBtn.closest('[data-pg-id]');
     if (!wrap) return;
@@ -740,8 +855,10 @@ resultsEl.addEventListener('click', e => {
     const st = pgStore[id];
     if (!st) return;
     const pages = Math.ceil(st.rows.length / st.pageSize) || 1;
-    if (pgBtn.classList.contains('pg-prev') && st.page > 0) st.page--;
-    else if (pgBtn.classList.contains('pg-next') && st.page < pages - 1) st.page++;
+    if      (pgBtn.classList.contains('pg-first') && st.page > 0)            st.page = 0;
+    else if (pgBtn.classList.contains('pg-prev')  && st.page > 0)            st.page--;
+    else if (pgBtn.classList.contains('pg-next')  && st.page < pages - 1)    st.page++;
+    else if (pgBtn.classList.contains('pg-last')  && st.page < pages - 1)    st.page = pages - 1;
     updatePgView(id);
     return;
   }
@@ -787,6 +904,49 @@ resultsEl.addEventListener('click', e => {
     e.preventDefault();
     inputEl.value = lookupEl.dataset.lookup;
     lookup(lookupEl.dataset.lookup);
+  }
+});
+
+// ── AS table clicks (sort, pagination, row) ────────────────────────────────
+asTableSectionEl.addEventListener('click', e => {
+  const sortTh = e.target.closest('th[data-sort]');
+  if (sortTh) {
+    const wrap = sortTh.closest('[data-pg-id]');
+    if (wrap) applySort(wrap.dataset.pgId, sortTh.dataset.sort);
+    return;
+  }
+  const pgBtn = e.target.closest('.pg-first, .pg-prev, .pg-next, .pg-last');
+  if (pgBtn) {
+    const wrap = pgBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    const id = wrap.dataset.pgId;
+    const st = pgStore[id];
+    if (!st) return;
+    const pages = Math.ceil(st.rows.length / st.pageSize) || 1;
+    if      (pgBtn.classList.contains('pg-first') && st.page > 0)         st.page = 0;
+    else if (pgBtn.classList.contains('pg-prev')  && st.page > 0)         st.page--;
+    else if (pgBtn.classList.contains('pg-next')  && st.page < pages - 1) st.page++;
+    else if (pgBtn.classList.contains('pg-last')  && st.page < pages - 1) st.page = pages - 1;
+    updatePgView(id);
+    return;
+  }
+  const sizeBtn = e.target.closest('.pg-size-btn');
+  if (sizeBtn) {
+    const wrap = sizeBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    const id = wrap.dataset.pgId;
+    const st = pgStore[id];
+    if (!st) return;
+    st.pageSize = parseInt(sizeBtn.dataset.size);
+    st.page = 0;
+    updatePgView(id);
+    return;
+  }
+  const asRow = e.target.closest('.as-row');
+  if (asRow) {
+    const q = `AS${asRow.dataset.asn}`;
+    inputEl.value = q;
+    lookup(q);
   }
 });
 
@@ -862,6 +1022,9 @@ async function runCompare({ updateUrl = true } = {}) {
   const query = inputEl.value.trim();
   resultsEl.innerHTML = '';
   resetPg(); currentLookupCtx = null;
+  chartSection.style.display = 'none';
+  asStatsSectionEl.style.display = 'none';
+  asTableSectionEl.style.display = 'none';
 
   if (updateUrl) {
     const params = new URLSearchParams();
@@ -1248,10 +1411,104 @@ const CHART_SERIES = {
   ],
 };
 
+let asStatsReady  = false;
+let asTableReady  = false;
 let chartData     = null;
 let chartVer      = 'v4';
 let chartHidden   = new Set();
 let chartHoverIdx = null;
+
+async function initASStats() {
+  if (!conn) return;
+  try {
+    const [r4, r6, rcomb, rboth, rm4, rm6] = await Promise.all([
+      conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4
+        WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1)`),
+      conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6
+        WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
+      conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        UNION
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
+      conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        INTERSECT
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
+      conn.query(`SELECT COUNT(*) AS n FROM ipv4 WHERE position('_' IN ASN) > 0`),
+      conn.query(`SELECT COUNT(*) AS n FROM ipv6 WHERE position('_' IN ASN) > 0`),
+    ]);
+    const get = r => Number(r.toArray()[0].toJSON().n ?? 0);
+    const n4 = get(r4), n6 = get(r6), ncomb = get(rcomb), nboth = get(rboth);
+    const m4 = get(rm4), m6 = get(rm6);
+    document.getElementById('as-stat-v4').textContent    = fmtN(n4);
+    document.getElementById('as-stat-v6').textContent    = fmtN(n6);
+    document.getElementById('as-stat-comb').textContent  = fmtN(ncomb);
+    document.getElementById('as-stat-both').textContent  = fmtN(nboth);
+    document.getElementById('moas-stat-v4').textContent  = fmtN(m4);
+    document.getElementById('moas-stat-v6').textContent  = fmtN(m6);
+    document.getElementById('moas-stat-comb').textContent = fmtN(m4 + m6);
+    asStatsReady = true;
+    if (!resultsEl.innerHTML) asStatsSectionEl.style.display = '';
+  } catch (_) { /* stats are optional */ }
+}
+
+async function initASTable() {
+  if (!conn) return;
+  try {
+    const result = await conn.query(`
+      SELECT asn_val,
+        COUNT(DISTINCT CASE WHEN ver = 'v4' THEN prefix END) AS n4,
+        COUNT(DISTINCT CASE WHEN ver = 'v6' THEN prefix END) AS n6,
+        COUNT(DISTINCT prefix) AS total
+      FROM (
+        SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v4' AS ver, prefix
+        FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        UNION ALL
+        SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v6' AS ver, prefix
+        FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1
+      )
+      GROUP BY asn_val
+      ORDER BY total DESC, n4 DESC, n6 DESC
+    `);
+    const rows = result.toArray().map(r => {
+      const j = r.toJSON();
+      return { asn: String(j.asn_val), n4: Number(j.n4 ?? 0), n6: Number(j.n6 ?? 0), total: Number(j.total ?? 0) };
+    });
+    if (!rows.length) return;
+
+    const id = `pg${++pgCounter}`;
+    const pageSize = 25;
+    const renderRows = (slice) => slice.map(row => `
+      <tr class="as-row pl-row" data-asn="${escHtml(row.asn)}">
+        <td><span class="prefix-link">AS${escHtml(row.asn)}</span></td>
+        <td class="${row.n4 ? 'count' : 'count-zero'}">${row.n4 ? fmtN(row.n4) : '\u2014'}</td>
+        <td class="${row.n6 ? 'count' : 'count-zero'}">${row.n6 ? fmtN(row.n6) : '\u2014'}</td>
+        <td class="count">${fmtN(row.total)}</td>
+      </tr>`).join('');
+
+    pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, sortCol: 'total', sortAsc: false };
+    const initialBody = renderRows(rows.slice(0, pageSize));
+    const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+    document.getElementById('as-table-body').innerHTML = `
+      <div data-pg-id="${id}">
+        <div class="pg-controls-slot">${controls}</div>
+        <table class="prefix-list">
+          <thead><tr>
+            <th data-sort="asn">ASN<span class="sort-ind"></span></th>
+            <th data-sort="n4">IPv4<span class="sort-ind"></span></th>
+            <th data-sort="n6">IPv6<span class="sort-ind"></span></th>
+            <th data-sort="total" class="sort-active">Total<span class="sort-ind">\u2193</span></th>
+          </tr></thead>
+          <tbody>${initialBody}</tbody>
+        </table>
+        <div class="pg-controls-slot">${controls}</div>
+      </div>`;
+    asTableReady = true;
+    if (!resultsEl.innerHTML) asTableSectionEl.style.display = '';
+  } catch (_) { /* optional */ }
+}
 
 async function initChart() {
   try {
