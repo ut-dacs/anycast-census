@@ -66,6 +66,9 @@ function expandIPv6(addr) {
 let db, conn;
 let currentViewKey = null; // tracks which parquet files are registered as views
 let leafletMap = null;
+let asStatsReady  = false;
+let asTableReady  = false;
+let chartData     = null;
 
 try {
   const BUNDLES = duckdb.getJsDelivrBundles();
@@ -87,13 +90,24 @@ try {
   setStatus('Ready.');
   searchBtn.disabled = false;
   examplesEl.style.display = '';
-  initASStats();
-  initASTable();
 
   // Auto-run lookup / compare if URL has query params
   const initParams = new URLSearchParams(window.location.search);
   const initMode = initParams.get('mode');
   const initQ    = initParams.get('q');
+  const initDate = initParams.get('date');
+
+  // If on home page with a date, pre-set the picker before loading stats
+  if (!initQ && !initMode && initDate) {
+    whenDate.checked   = true;
+    whenLatest.checked = false;
+    dateInput.value    = initDate;
+    dateInput.disabled = false;
+  }
+
+  const homeViewKey = (!initQ && !initMode && initDate) ? initDate.replace(/-/g, '/') : 'latest';
+  refreshHomeStats(homeViewKey);
+
   if (initMode === 'compare') {
     const dA = initParams.get('dateA');
     const dB = initParams.get('dateB');
@@ -110,7 +124,6 @@ try {
     }
   } else if (initQ) {
     inputEl.value = initQ;
-    const initDate = initParams.get('date');
     if (initDate) {
       whenDate.checked   = true;
       whenLatest.checked = false;
@@ -173,6 +186,19 @@ window.addEventListener('popstate', async e => {
     resultsEl.innerHTML = '';
     resetPg();
     setStatus('Ready.');
+    const date = params.get('date');
+    if (date) {
+      whenDate.checked   = true;
+      whenLatest.checked = false;
+      dateInput.value    = date;
+      dateInput.disabled = false;
+    } else {
+      whenLatest.checked = true;
+      whenDate.checked   = false;
+      dateInput.disabled = true;
+    }
+    if (chartData) chartSection.style.display = '';
+    refreshHomeStats(date ? date.replace(/-/g, '/') : 'latest');
   }
 });
 
@@ -440,10 +466,12 @@ function applyTableFilter(id, filterType, value) {
   if (!st || !st.allRows) return;
   if (filterType === 'conf') st.confFilter = value;
   else if (filterType === 'ver') st.verFilter = value;
-  // Apply both filters then re-apply active sort
+  else if (filterType === 'mbr') st.mbrFilter = value;
+  // Apply all active filters then re-apply active sort
   st.rows = st.allRows.filter(r => {
     if (st.confFilter !== 'all' && r.conf !== st.confFilter) return false;
     if (st.verFilter  !== 'all' && r.ver  !== st.verFilter)  return false;
+    if (st.mbrFilter  && st.mbrFilter !== 'all' && r.membership !== st.mbrFilter) return false;
     return true;
   });
   st.rows = sortRows(st.rows, st.sortCol, st.sortAsc);
@@ -458,14 +486,20 @@ function applyTableFilter(id, filterType, value) {
   wrap.querySelectorAll('.ver-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.ver === st.verFilter);
   });
+  wrap.querySelectorAll('.mbr-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mbr === (st.mbrFilter ?? 'all'));
+  });
   // Update count display
   const countEl = wrap.querySelector('.conf-filter-count');
   if (countEl) countEl.textContent = `${fmtN(st.rows.length)} shown`;
-  // Recompute confidence counts for the active ver filter
-  if (filterType === 'ver') {
-    const verFiltered = st.allRows.filter(r => st.verFilter === 'all' || r.ver === st.verFilter);
+  // Recompute confidence counts for the active ver + mbr filters
+  if (filterType === 'ver' || filterType === 'mbr') {
+    const filtered = st.allRows.filter(r =>
+      (st.verFilter === 'all' || r.ver === st.verFilter) &&
+      (!st.mbrFilter || st.mbrFilter === 'all' || r.membership === st.mbrFilter)
+    );
     let cH = 0, cM = 0, cL = 0;
-    for (const r of verFiltered) {
+    for (const r of filtered) {
       if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
     }
     wrap.querySelectorAll('.conf-filter-btn').forEach(btn => {
@@ -559,13 +593,15 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
   pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, confFilter: 'all', verFilter: 'all', sortCol: null, sortAsc: true };
   const initialBody = renderRows(rows.slice(0, pageSize));
   const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+  const mixedProtocol = nV4 > 0 && nV6 > 0;
   const filterBar = `<div class="conf-filter">
     <div class="filter-row">
+      ${mixedProtocol ? `
       <span class="conf-filter-lbl">Protocol:</span>
       <button class="ver-filter-btn active" data-ver="all">All (${fmtN(rows.length)})</button>
       <button class="ver-filter-btn" data-ver="v4">IPv4 (${fmtN(nV4)})</button>
       <button class="ver-filter-btn" data-ver="v6">IPv6 (${fmtN(nV6)})</button>
-      <span class="pg-sep">\u00B7</span>
+      <span class="pg-sep">\u00B7</span>` : ''}
       <span class="conf-filter-count">${fmtN(rows.length)} shown</span>
     </div>
     <div class="filter-row">
@@ -579,7 +615,7 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
 
   return `
     <div class="card" data-pg-id="${id}">
-      <div class="card-title">${fmtN(rows.length)} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} \u2014 ${escHtml(dateLabel)} <span style="font-weight:400;text-transform:none;letter-spacing:0">(${fmtN(nV4)} IPv4, ${fmtN(nV6)} IPv6)</span></div>
+      <div class="card-title">${fmtN(rows.length)} anycast prefix${rows.length !== 1 ? 'es' : ''} in ${escHtml(searchTerm)} \u2014 ${escHtml(dateLabel)}${mixedProtocol ? ` <span style="font-weight:400;text-transform:none;letter-spacing:0">(${fmtN(nV4)} IPv4, ${fmtN(nV6)} IPv6)</span>` : ''}</div>
       <p class="loc-note">Click a prefix to see its full details.</p>
       ${filterBar}
       <div class="pg-controls-slot">${controls}</div>
@@ -805,8 +841,6 @@ document.getElementById('home-link').addEventListener('click', e => {
   resultsEl.innerHTML = '';
   resetPg();
   if (chartData) chartSection.style.display = '';
-  if (asStatsReady) asStatsSectionEl.style.display = '';
-  if (asTableReady) asTableSectionEl.style.display = '';
   if (isCompareMode) {
     isCompareMode = false;
     modeLookup.classList.add('active');
@@ -815,7 +849,10 @@ document.getElementById('home-link').addEventListener('click', e => {
     compareRow.style.display = 'none';
   }
   setStatus('Ready.');
-  history.pushState(null, '', '.');
+  const vk = selectedViewKey();
+  const urlDate = vk === 'latest' ? null : dateInput.value;
+  history.pushState(null, '', urlDate ? '?date=' + urlDate : '.');
+  refreshHomeStats(vk);
 });
 
 resultsEl.addEventListener('click', e => {
@@ -843,6 +880,15 @@ resultsEl.addEventListener('click', e => {
     const wrap = verBtn.closest('[data-pg-id]');
     if (!wrap) return;
     applyTableFilter(wrap.dataset.pgId, 'ver', verBtn.dataset.ver);
+    return;
+  }
+
+  // ── Membership (onlyA / onlyB / both) filter buttons ──
+  const mbrBtn = e.target.closest('.mbr-filter-btn');
+  if (mbrBtn) {
+    const wrap = mbrBtn.closest('[data-pg-id]');
+    if (!wrap) return;
+    applyTableFilter(wrap.dataset.pgId, 'mbr', mbrBtn.dataset.mbr);
     return;
   }
 
@@ -962,12 +1008,24 @@ document.querySelectorAll('input[name="when"]').forEach(radio => {
     dateInput.disabled = whenLatest.checked;
     if (!whenLatest.checked) {
       dateInput.focus();
+    } else if (!resultsEl.innerHTML) {
+      // Switched to "Latest" on home page — refresh stats and clear date from URL
+      history.replaceState(null, '', '.');
+      refreshHomeStats('latest');
     }
   });
 });
 
 // Clicking the date input automatically switches to the "date" radio
 dateInput.addEventListener('focus', () => { whenDate.checked = true; dateInput.disabled = false; });
+
+// When a date is picked on the home page, refresh stats and encode in URL
+dateInput.addEventListener('change', () => {
+  if (!dateInput.value || resultsEl.innerHTML) return;
+  const viewKey = dateInput.value.replace(/-/g, '/');
+  history.replaceState(null, '', '?date=' + dateInput.value);
+  refreshHomeStats(viewKey);
+});
 
 // ── Compare mode toggle ─────────────────────────────────────────────────────
 modeLookup.addEventListener('click', () => {
@@ -1023,8 +1081,22 @@ async function runCompare({ updateUrl = true } = {}) {
   resultsEl.innerHTML = '';
   resetPg(); currentLookupCtx = null;
   chartSection.style.display = 'none';
-  asStatsSectionEl.style.display = 'none';
-  asTableSectionEl.style.display = 'none';
+
+  // Show stats cards immediately with loading placeholders
+  asStatsReady = false;
+  asTableReady = false;
+  document.getElementById('as-stats-title').textContent =
+    `Network statistics (high confidence) \u2014 ${dateB} vs ${dateA}`;
+  document.getElementById('as-table-title').innerHTML =
+    `ASes deploying anycast \u2014 ${dateB} vs ${dateA} <span class="stat-note">(confident or better)</span>`;
+  ['as-stat-v4','as-stat-v6','as-stat-comb',
+   'bgp-stat-v4','bgp-stat-v6','bgp-stat-comb',
+   'moas-stat-v4','moas-stat-v6','moas-stat-comb'].forEach(id => {
+    document.getElementById(id).textContent = '\u2014';
+  });
+  document.getElementById('as-table-body').innerHTML = '';
+  asStatsSectionEl.style.display = '';
+  asTableSectionEl.style.display = '';
 
   if (updateUrl) {
     const params = new URLSearchParams();
@@ -1043,6 +1115,10 @@ async function runCompare({ updateUrl = true } = {}) {
     setStatus('Failed to load data for one or both dates: ' + (err.message ?? ''), true);
     return;
   }
+
+  // Fire global stats comparison in parallel with the prefix/census query
+  initASStatsCompare(dateA, dateB);
+  initASTableCompare(dateA, dateB);
 
   if (query) {
     // Prefix-level compare
@@ -1227,6 +1303,60 @@ function renderCompareResults(both, onlyA, onlyB, dateA, dateB) {
     </tr>`;
   }
 
+  // Combined prefix list with membership filter
+  const allRows = [
+    ...both.map(r => ({ ...r, membership: 'both' })),
+    ...onlyA.map(r => ({ ...r, membership: 'onlyA' })),
+    ...onlyB.map(r => ({ ...r, membership: 'onlyB' })),
+  ];
+  const id = `pg${++pgCounter}`;
+  const pageSize = 10;
+  const cmpRenderRows = (slice) => slice.map(r => {
+    const cc = r.conf === 'high' ? 'conf-col-high' : r.conf === 'medium' ? 'conf-col-medium' : 'conf-col-low';
+    const cl = r.conf === 'high' ? 'High' : r.conf === 'medium' ? 'Medium' : 'Low';
+    const dotCls = r.membership === 'both' ? 'cmp-dot-both' : r.membership === 'onlyA' ? 'cmp-dot-onlyA' : 'cmp-dot-onlyB';
+    return `<tr class="pl-row cmp-click" data-prefix="${escHtml(r.prefix)}">
+      <td><span class="cmp-dot ${dotCls}"></span></td>
+      <td><span class="ver-badge">${r.ver}</span></td>
+      <td><span class="prefix-link">${escHtml(r.prefix)}</span></td>
+      <td><span class="conf-col ${cc}">${cl}</span></td>
+    </tr>`;
+  }).join('');
+
+  let cH = 0, cM = 0, cL = 0, nV4 = 0, nV6 = 0;
+  for (const r of allRows) {
+    if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
+    if (r.ver === 'v4') nV4++; else nV6++;
+  }
+  pgStore[id] = { allRows, rows: allRows, page: 0, pageSize, renderRows: cmpRenderRows,
+                  confFilter: 'all', verFilter: 'all', mbrFilter: 'all' };
+  const initialBody = cmpRenderRows(allRows.slice(0, pageSize));
+  const controls = pgControlsHtml(id, allRows.length, 0, pageSize);
+  const filterBar = `<div class="conf-filter">
+    <div class="filter-row">
+      <span class="conf-filter-lbl">Show:</span>
+      <button class="mbr-filter-btn active" data-mbr="all">All (${fmtN(allRows.length)})</button>
+      <button class="mbr-filter-btn" data-mbr="onlyA"><span class="cmp-dot cmp-dot-onlyA" style="margin-right:0.3em"></span>Only ${escHtml(dateA)} (${fmtN(onlyA.length)})</button>
+      <button class="mbr-filter-btn" data-mbr="onlyB"><span class="cmp-dot cmp-dot-onlyB" style="margin-right:0.3em"></span>Only ${escHtml(dateB)} (${fmtN(onlyB.length)})</button>
+      <button class="mbr-filter-btn" data-mbr="both"><span class="cmp-dot cmp-dot-both" style="margin-right:0.3em"></span>In both (${fmtN(both.length)})</button>
+    </div>
+    <div class="filter-row">
+      <span class="conf-filter-lbl">Protocol:</span>
+      <button class="ver-filter-btn active" data-ver="all">All (${fmtN(allRows.length)})</button>
+      <button class="ver-filter-btn" data-ver="v4">IPv4 (${fmtN(nV4)})</button>
+      <button class="ver-filter-btn" data-ver="v6">IPv6 (${fmtN(nV6)})</button>
+    </div>
+    <div class="filter-row">
+      <span class="conf-filter-lbl">Confidence:</span>
+      <button class="conf-filter-btn active" data-conf="all">All</button>
+      <button class="conf-filter-btn" data-conf="high">High (${fmtN(cH)})</button>
+      <button class="conf-filter-btn" data-conf="medium">Med (${fmtN(cM)})</button>
+      <button class="conf-filter-btn" data-conf="low">Low (${fmtN(cL)})</button>
+      <span class="pg-sep">\u00B7</span>
+      <span class="conf-filter-count">${fmtN(allRows.length)} shown</span>
+    </div>
+  </div>`;
+
   return `
     <div class="card">
       <div class="card-title">Census comparison: ${escHtml(dateA)} vs ${escHtml(dateB)}</div>
@@ -1248,19 +1378,14 @@ function renderCompareResults(both, onlyA, onlyB, dateA, dateB) {
         Enter a prefix in the search box and click Compare to see per-prefix differences.</p>
     </div>
 
-    <div class="card">
-      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-onlyA"></span> Only in ${escHtml(dateA)} (${fmtN(onlyA.length)})</div>
-      ${prefixTable(onlyA)}
-    </div>
-
-    <div class="card">
-      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-onlyB"></span> Only in ${escHtml(dateB)} (${fmtN(onlyB.length)})</div>
-      ${prefixTable(onlyB)}
-    </div>
-
-    <div class="card">
-      <div class="cmp-section-title"><span class="cmp-dot cmp-dot-both"></span> In both dates (${fmtN(both.length)})</div>
-      ${prefixTable(both)}
+    <div class="card" data-pg-id="${id}">
+      ${filterBar}
+      <div class="pg-controls-slot">${controls}</div>
+      <table class="prefix-list">
+        <thead><tr><th></th><th></th><th>Prefix</th><th>Confidence</th></tr></thead>
+        <tbody>${initialBody}</tbody>
+      </table>
+      <div class="pg-controls-slot">${controls}</div>
     </div>`;
 }
 
@@ -1411,17 +1536,32 @@ const CHART_SERIES = {
   ],
 };
 
-let asStatsReady  = false;
-let asTableReady  = false;
-let chartData     = null;
 let chartVer      = 'v4';
 let chartHidden   = new Set();
 let chartHoverIdx = null;
 
-async function initASStats() {
+async function refreshHomeStats(viewKey = 'latest') {
+  asStatsReady = false;
+  asTableReady = false;
+  const dateLabel = viewKey === 'latest' ? 'latest' : viewKey.replace(/\//g, '-');
+  document.getElementById('as-stats-title').textContent =
+    `Network statistics (high confidence) \u2014 ${dateLabel}`;
+  document.getElementById('as-table-title').innerHTML =
+    `ASes deploying anycast \u2014 ${dateLabel} <span class="stat-note">(confident or better)</span>`;
+  ['as-stat-v4','as-stat-v6','as-stat-comb',
+   'bgp-stat-v4','bgp-stat-v6','bgp-stat-comb',
+   'moas-stat-v4','moas-stat-v6','moas-stat-comb'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('as-table-body').innerHTML = '';
+  await Promise.all([initASStats(viewKey), initASTable(viewKey)]);
+}
+
+async function initASStats(viewKey = 'latest') {
   if (!conn) return;
+  await registerViews(viewKey);
   try {
-    const [r4, r6, rcomb, rboth, rm4, rm6] = await Promise.all([
+    const [r4, r6, rcomb, rm4, rm6, rbgp4, rbgp6, rbgpcomb] = await Promise.all([
       conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
         SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4
         WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1)`),
@@ -1429,33 +1569,47 @@ async function initASStats() {
         SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6
         WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
       conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
-        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4
+        WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
         UNION
-        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
-      conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
-        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
-        INTERSECT
-        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
-      conn.query(`SELECT COUNT(*) AS n FROM ipv4 WHERE position('_' IN ASN) > 0`),
-      conn.query(`SELECT COUNT(*) AS n FROM ipv6 WHERE position('_' IN ASN) > 0`),
+        SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ipv6
+        WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
+      conn.query(`SELECT COUNT(*) AS n FROM ipv4
+        WHERE position('_' IN ASN) > 0
+        AND greatest(GCD_ICMPv4, GCD_TCPv4) > 1`),
+      conn.query(`SELECT COUNT(*) AS n FROM ipv6
+        WHERE position('_' IN ASN) > 0
+        AND greatest(GCD_ICMPv6, GCD_TCPv6) > 1`),
+      conn.query(`SELECT COUNT(DISTINCT backing_prefix) AS n FROM ipv4
+        WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1`),
+      conn.query(`SELECT COUNT(DISTINCT backing_prefix) AS n FROM ipv6
+        WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1`),
+      conn.query(`SELECT COUNT(DISTINCT bp) AS n FROM (
+        SELECT backing_prefix AS bp FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        UNION
+        SELECT backing_prefix AS bp FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1)`),
     ]);
     const get = r => Number(r.toArray()[0].toJSON().n ?? 0);
-    const n4 = get(r4), n6 = get(r6), ncomb = get(rcomb), nboth = get(rboth);
+    const n4 = get(r4), n6 = get(r6), ncomb = get(rcomb);
     const m4 = get(rm4), m6 = get(rm6);
+    const bgp4 = get(rbgp4), bgp6 = get(rbgp6), bgpcomb = get(rbgpcomb);
     document.getElementById('as-stat-v4').textContent    = fmtN(n4);
     document.getElementById('as-stat-v6').textContent    = fmtN(n6);
     document.getElementById('as-stat-comb').textContent  = fmtN(ncomb);
-    document.getElementById('as-stat-both').textContent  = fmtN(nboth);
     document.getElementById('moas-stat-v4').textContent  = fmtN(m4);
     document.getElementById('moas-stat-v6').textContent  = fmtN(m6);
     document.getElementById('moas-stat-comb').textContent = fmtN(m4 + m6);
+    document.getElementById('bgp-stat-v4').textContent   = fmtN(bgp4);
+    document.getElementById('bgp-stat-v6').textContent   = fmtN(bgp6);
+    document.getElementById('bgp-stat-comb').textContent = fmtN(bgpcomb);
     asStatsReady = true;
     if (!resultsEl.innerHTML) asStatsSectionEl.style.display = '';
   } catch (_) { /* stats are optional */ }
 }
 
-async function initASTable() {
+async function initASTable(viewKey = 'latest') {
   if (!conn) return;
+  await registerViews(viewKey);
   try {
     const result = await conn.query(`
       SELECT asn_val,
@@ -1464,10 +1618,10 @@ async function initASTable() {
         COUNT(DISTINCT prefix) AS total
       FROM (
         SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v4' AS ver, prefix
-        FROM ipv4 WHERE greatest(GCD_ICMPv4, GCD_TCPv4) > 1
+        FROM ipv4 WHERE (greatest(GCD_ICMPv4, GCD_TCPv4) > 1 OR greatest(AB_ICMPv4, AB_TCPv4, AB_DNSv4) > 2)
         UNION ALL
         SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v6' AS ver, prefix
-        FROM ipv6 WHERE greatest(GCD_ICMPv6, GCD_TCPv6) > 1
+        FROM ipv6 WHERE (greatest(GCD_ICMPv6, GCD_TCPv6) > 1 OR greatest(AB_ICMPv6, AB_TCPv6, AB_DNSv6) > 2)
       )
       GROUP BY asn_val
       ORDER BY total DESC, n4 DESC, n6 DESC
@@ -1479,7 +1633,7 @@ async function initASTable() {
     if (!rows.length) return;
 
     const id = `pg${++pgCounter}`;
-    const pageSize = 25;
+    const pageSize = 10;
     const renderRows = (slice) => slice.map(row => `
       <tr class="as-row pl-row" data-asn="${escHtml(row.asn)}">
         <td><span class="prefix-link">AS${escHtml(row.asn)}</span></td>
@@ -1507,6 +1661,128 @@ async function initASTable() {
       </div>`;
     asTableReady = true;
     if (!resultsEl.innerHTML) asTableSectionEl.style.display = '';
+  } catch (_) { /* optional */ }
+}
+
+async function initASStatsCompare(dateA, dateB) {
+  if (!conn) return;
+  const c4 = `greatest(GCD_ICMPv4, GCD_TCPv4) > 1`;
+  const c6 = `greatest(GCD_ICMPv6, GCD_TCPv6) > 1`;
+  const statsQueries = (v4, v6) => [
+    conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+      SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ${v4} WHERE ${c4})`),
+    conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+      SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ${v6} WHERE ${c6})`),
+    conn.query(`SELECT COUNT(DISTINCT asn_val) AS n FROM (
+      SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ${v4} WHERE ${c4}
+      UNION
+      SELECT unnest(string_split(ASN, '_')) AS asn_val FROM ${v6} WHERE ${c6})`),
+    conn.query(`SELECT COUNT(*) AS n FROM ${v4}
+      WHERE position('_' IN ASN) > 0 AND ${c4}`),
+    conn.query(`SELECT COUNT(*) AS n FROM ${v6}
+      WHERE position('_' IN ASN) > 0 AND ${c6}`),
+    conn.query(`SELECT COUNT(DISTINCT backing_prefix) AS n FROM ${v4} WHERE ${c4}`),
+    conn.query(`SELECT COUNT(DISTINCT backing_prefix) AS n FROM ${v6} WHERE ${c6}`),
+    conn.query(`SELECT COUNT(DISTINCT bp) AS n FROM (
+      SELECT backing_prefix AS bp FROM ${v4} WHERE ${c4}
+      UNION
+      SELECT backing_prefix AS bp FROM ${v6} WHERE ${c6})`),
+  ];
+  try {
+    const [resA, resB] = await Promise.all([
+      Promise.all(statsQueries('ipv4_a', 'ipv6_a')),
+      Promise.all(statsQueries('ipv4_b', 'ipv6_b')),
+    ]);
+    const get = r => Number(r.toArray()[0].toJSON().n ?? 0);
+    const vA = resA.map(get);
+    const vB = resB.map(get);
+    // indices: 0=as4, 1=as6, 2=ascomb, 3=moas4, 4=moas6, 5=bgp4, 6=bgp6, 7=bgpcomb
+    const setDelta = (id, b, a) => {
+      const d = b - a;
+      const ds = d === 0 ? '' :
+        `<span class="delta ${d > 0 ? 'delta-pos' : 'delta-neg'}">${d > 0 ? '+' : ''}${fmtN(d)}</span>`;
+      document.getElementById(id).innerHTML = `${fmtN(b)}${ds ? ' ' + ds : ''}`;
+    };
+    setDelta('as-stat-v4',     vB[0], vA[0]);
+    setDelta('as-stat-v6',     vB[1], vA[1]);
+    setDelta('as-stat-comb',   vB[2], vA[2]);
+    setDelta('moas-stat-v4',   vB[3], vA[3]);
+    setDelta('moas-stat-v6',   vB[4], vA[4]);
+    setDelta('moas-stat-comb', vB[3]+vB[4], vA[3]+vA[4]);
+    setDelta('bgp-stat-v4',    vB[5], vA[5]);
+    setDelta('bgp-stat-v6',    vB[6], vA[6]);
+    setDelta('bgp-stat-comb',  vB[7], vA[7]);
+    asStatsReady = true;
+  } catch (_) { /* optional */ }
+}
+
+async function initASTableCompare(dateA, dateB) {
+  if (!conn) return;
+  const c4 = `(greatest(GCD_ICMPv4, GCD_TCPv4) > 1 OR greatest(AB_ICMPv4, AB_TCPv4, AB_DNSv4) > 2)`;
+  const c6 = `(greatest(GCD_ICMPv6, GCD_TCPv6) > 1 OR greatest(AB_ICMPv6, AB_TCPv6, AB_DNSv6) > 2)`;
+  const asnQuery = (v4, v6) => conn.query(`
+    SELECT asn_val,
+      COUNT(DISTINCT CASE WHEN ver = 'v4' THEN prefix END) AS n4,
+      COUNT(DISTINCT CASE WHEN ver = 'v6' THEN prefix END) AS n6,
+      COUNT(DISTINCT prefix) AS total
+    FROM (
+      SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v4' AS ver, prefix
+      FROM ${v4} WHERE ${c4}
+      UNION ALL
+      SELECT unnest(string_split(ASN, '_')) AS asn_val, 'v6' AS ver, prefix
+      FROM ${v6} WHERE ${c6}
+    ) GROUP BY asn_val`);
+  try {
+    const [resA, resB] = await Promise.all([
+      asnQuery('ipv4_a', 'ipv6_a'),
+      asnQuery('ipv4_b', 'ipv6_b'),
+    ]);
+    const toMap = res => new Map(res.toArray().map(r => {
+      const j = r.toJSON();
+      return [String(j.asn_val), { n4: Number(j.n4??0), n6: Number(j.n6??0), total: Number(j.total??0) }];
+    }));
+    const mapA = toMap(resA), mapB = toMap(resB);
+    const rows = [...mapB.entries()].map(([asn, b]) => {
+      const a = mapA.get(asn) ?? { n4: 0, n6: 0, total: 0 };
+      return { asn, n4: b.n4, n6: b.n6, total: b.total,
+               d4: b.n4 - a.n4, d6: b.n6 - a.n6, dtotal: b.total - a.total };
+    });
+    rows.sort((a, b) => b.total - a.total || b.dtotal - a.dtotal);
+    if (!rows.length) return;
+
+    const fmtDelta = (val, d) => {
+      const ds = d === 0 ? '' :
+        `<span class="delta ${d > 0 ? 'delta-pos' : 'delta-neg'}">${d > 0 ? '+' : ''}${fmtN(d)}</span>`;
+      return (val ? fmtN(val) : '\u2014') + (ds ? ' ' + ds : '');
+    };
+    const id = `pg${++pgCounter}`;
+    const pageSize = 10;
+    const renderRows = (slice) => slice.map(row => `
+      <tr class="as-row pl-row" data-asn="${escHtml(row.asn)}">
+        <td><span class="prefix-link">AS${escHtml(row.asn)}</span></td>
+        <td class="${row.n4 ? 'count' : 'count-zero'}">${fmtDelta(row.n4, row.d4)}</td>
+        <td class="${row.n6 ? 'count' : 'count-zero'}">${fmtDelta(row.n6, row.d6)}</td>
+        <td class="count">${fmtDelta(row.total, row.dtotal)}</td>
+      </tr>`).join('');
+
+    pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, sortCol: 'total', sortAsc: false };
+    const initialBody = renderRows(rows.slice(0, pageSize));
+    const controls = pgControlsHtml(id, rows.length, 0, pageSize);
+    document.getElementById('as-table-body').innerHTML = `
+      <div data-pg-id="${id}">
+        <div class="pg-controls-slot">${controls}</div>
+        <table class="prefix-list">
+          <thead><tr>
+            <th data-sort="asn">ASN<span class="sort-ind"></span></th>
+            <th data-sort="n4">IPv4<span class="sort-ind"></span></th>
+            <th data-sort="n6">IPv6<span class="sort-ind"></span></th>
+            <th data-sort="total" class="sort-active">Total<span class="sort-ind">\u2193</span></th>
+          </tr></thead>
+          <tbody>${initialBody}</tbody>
+        </table>
+        <div class="pg-controls-slot">${controls}</div>
+      </div>`;
+    asTableReady = true;
   } catch (_) { /* optional */ }
 }
 

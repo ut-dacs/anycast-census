@@ -350,6 +350,9 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
 .as-stats-table tbody tr:last-child td { border-bottom: none; }
 .stat-val { font-weight: 600; font-variant-numeric: tabular-nums; }
 .stat-note { color: #8b949e; font-size: 0.78em; font-weight: 400; }
+.delta { font-size: 0.82em; font-weight: 500; }
+.delta-pos { color: #3fb950; }
+.delta-neg { color: #f85149; }
 
 .prefix-list {
   width: 100%;
@@ -720,7 +723,7 @@ pre.bibtex {
 
 .conf-filter-lbl { color: #484f58; }
 
-.conf-filter-btn {
+.conf-filter-btn, .ver-filter-btn, .mbr-filter-btn {
   background: transparent;
   border: 1px solid #30363d;
   border-radius: 3px;
@@ -732,20 +735,8 @@ pre.bibtex {
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
-.conf-filter-btn.active, .ver-filter-btn.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
-.conf-filter-btn:hover:not(.active), .ver-filter-btn:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
-
-.ver-filter-btn {
-  background: transparent;
-  border: 1px solid #30363d;
-  border-radius: 3px;
-  color: #8b949e;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.72rem;
-  padding: 0.1rem 0.45rem;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
+.conf-filter-btn.active, .ver-filter-btn.active, .mbr-filter-btn.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+.conf-filter-btn:hover:not(.active), .ver-filter-btn:hover:not(.active), .mbr-filter-btn:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
 
 .conf-col {
   font-size: 0.72rem;
