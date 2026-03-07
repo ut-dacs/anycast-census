@@ -59,21 +59,23 @@
     <div id="results"></div>
 
     <div class="card" id="as-stats-section" style="display:none;margin-bottom:1.5rem">
-      <div class="card-title">Network statistics — latest census</div>
+      <div class="card-title" id="as-stats-title">Network statistics — latest</div>
       <table class="as-stats-table">
         <thead>
-          <tr><th></th><th>IPv4</th><th>IPv6</th><th>Combined</th></tr>
+          <tr><th></th><th>IPv4</th><th>IPv6</th><th>Union</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td>Anycast ASes <span class="stat-note">(high confidence)</span></td>
+            <td>Anycast ASes</td>
             <td id="as-stat-v4"   class="stat-val">—</td>
             <td id="as-stat-v6"   class="stat-val">—</td>
             <td id="as-stat-comb" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>ASes with both IPv4 &amp; IPv6 <span class="stat-note">(high confidence)</span></td>
-            <td id="as-stat-both" class="stat-val" colspan="3">—</td>
+            <td>Unique BGP prefixes <span class="stat-note">(backing_prefix)</span></td>
+            <td id="bgp-stat-v4"   class="stat-val">—</td>
+            <td id="bgp-stat-v6"   class="stat-val">—</td>
+            <td id="bgp-stat-comb" class="stat-val">—</td>
           </tr>
           <tr>
             <td>MOAS prefixes</td>
@@ -86,7 +88,7 @@
     </div>
 
     <div class="card" id="as-table-section" style="display:none;margin-bottom:1.5rem">
-      <div class="card-title">ASes deploying high-confidence anycast</div>
+      <div class="card-title" id="as-table-title">ASes deploying anycast — latest <span class="stat-note">(confident or better)</span></div>
       <p class="loc-note">Click an AS to look it up.</p>
       <div id="as-table-body"></div>
     </div>
