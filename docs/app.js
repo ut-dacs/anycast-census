@@ -62,6 +62,62 @@ function expandIPv6(addr) {
   return full.map(g => g.padStart(1, '0'));
 }
 
+// ── Bogon / reserved address detection ────────────────────────────────────
+function getIPv4BogonInfo(ip) {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return null;
+  const [a, b, c] = parts;
+  if (a === 0)                               return { label: '"This" network',             rfc: 'RFC 1122' };
+  if (a === 10)                              return { label: 'private',                    rfc: 'RFC 1918' };
+  if (a === 100 && b >= 64 && b <= 127)      return { label: 'shared address space',       rfc: 'RFC 6598' };
+  if (a === 127)                             return { label: 'loopback',                   rfc: 'RFC 1122' };
+  if (a === 169 && b === 254)                return { label: 'link-local',                 rfc: 'RFC 3927' };
+  if (a === 172 && b >= 16 && b <= 31)       return { label: 'private',                    rfc: 'RFC 1918' };
+  if (a === 192 && b === 0 && c === 0)       return { label: 'IETF protocol assignments',  rfc: 'RFC 6890' };
+  if (a === 192 && b === 0 && c === 2)       return { label: 'documentation (TEST-NET-1)', rfc: 'RFC 5737' };
+  if (a === 192 && b === 168)                return { label: 'private',                    rfc: 'RFC 1918' };
+  if (a === 198 && (b === 18 || b === 19))   return { label: 'benchmarking',               rfc: 'RFC 2544' };
+  if (a === 198 && b === 51 && c === 100)    return { label: 'documentation (TEST-NET-2)', rfc: 'RFC 5737' };
+  if (a === 203 && b === 0 && c === 113)     return { label: 'documentation (TEST-NET-3)', rfc: 'RFC 5737' };
+  if (a >= 224 && a <= 239)                  return { label: 'multicast',                  rfc: 'RFC 3171' };
+  if (a >= 240)                              return { label: 'reserved',                   rfc: 'RFC 1112' };
+  return null;
+}
+
+function getIPv6BogonInfo(ip) {
+  let groups;
+  try { groups = expandIPv6(ip); } catch { return null; }
+  const g = groups.map(h => parseInt(h, 16));
+  const [g0, g1, g2, g3] = g;
+  // ::/128  unspecified
+  if (g.every(x => x === 0))                                          return { label: 'unspecified address',     rfc: 'RFC 4291' };
+  // ::1/128  loopback
+  if (g.slice(0, 7).every(x => x === 0) && g[7] === 1)               return { label: 'loopback',                rfc: 'RFC 4291' };
+  // ::ffff:0:0/96  IPv4-mapped
+  if (g.slice(0, 5).every(x => x === 0) && g[5] === 0xffff)          return { label: 'IPv4-mapped',             rfc: 'RFC 4291' };
+  // 64:ff9b:1::/48  (check before 64:ff9b::/96)
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 1)                       return { label: 'IPv4/IPv6 translation',   rfc: 'RFC 8215' };
+  // 64:ff9b::/96  IPv4/IPv6 translation
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0)          return { label: 'IPv4/IPv6 translation',   rfc: 'RFC 6052' };
+  // 100::/64  discard
+  if (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0)              return { label: 'discard',                 rfc: 'RFC 6666' };
+  // 2001:2::/48  benchmarking (check before 2001::/32 Teredo)
+  if (g0 === 0x2001 && g1 === 2 && g2 === 0)                         return { label: 'benchmarking',            rfc: 'RFC 5180' };
+  // 2001:db8::/32  documentation
+  if (g0 === 0x2001 && g1 === 0x0db8)                                 return { label: 'documentation',           rfc: 'RFC 3849' };
+  // 2001::/32  Teredo
+  if (g0 === 0x2001 && g1 === 0)                                      return { label: 'Teredo tunneling',        rfc: 'RFC 4380' };
+  // 2002::/16  6to4
+  if (g0 === 0x2002)                                                  return { label: '6to4',                    rfc: 'RFC 3056' };
+  // fc00::/7  unique local (fc00–fdff)
+  if (g0 >= 0xfc00 && g0 <= 0xfdff)                                   return { label: 'unique local (ULA)',      rfc: 'RFC 4193' };
+  // fe80::/10  link-local (fe80–febf)
+  if (g0 >= 0xfe80 && g0 <= 0xfebf)                                   return { label: 'link-local',              rfc: 'RFC 4291' };
+  // ff00::/8  multicast
+  if (g0 >= 0xff00)                                                   return { label: 'multicast',               rfc: 'RFC 4291' };
+  return null;
+}
+
 // Initialise DuckDB
 let db, conn;
 let currentViewKey = null; // tracks which parquet files are registered as views
@@ -245,8 +301,27 @@ async function lookup(raw, { updateUrl = true } = {}) {
   const asnMatch = input.match(/^(?:AS)?(\d{1,10})$/i);
   if (asnMatch) { await lookupASN(asnMatch[1], viewKey, dateLabel); return; }
 
-  // Bare IPv4 address (no prefix length) → look up enclosing /24
+  // Bogon / reserved address detection
   const bareIPv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(input);
+  const isIPv6Input = input.includes(':');
+  // Extract host IP: bare IP → itself; CIDR → strip prefix length
+  const hostIPStr = bareIPv4    ? bareIPv4[0]
+                  : isIPv6Input ? (input.includes('/') ? input.split('/')[0] : input)
+                  : input.includes('/') ? input.split('/')[0]
+                  : null;
+  if (hostIPStr) {
+    const bogon = isIPv6Input ? getIPv6BogonInfo(hostIPStr) : getIPv4BogonInfo(hostIPStr);
+    if (bogon) {
+      setStatus('');
+      resultsEl.innerHTML = `<div class="bogon-notice">
+        <strong>${escHtml(input)}</strong> is a <strong>${bogon.label}</strong> address (${bogon.rfc}).
+        Reserved/bogon addresses are not routed on the public internet and will not appear in the anycast census.
+      </div>`;
+      return;
+    }
+  }
+
+  // Bare IPv4 address (no prefix length) → look up enclosing /24
   if (bareIPv4) {
     const cidr = `${bareIPv4[1]}.${bareIPv4[2]}.${bareIPv4[3]}.0/24`;
     await lookupPrefix(cidr, viewKey, dateLabel);
@@ -254,7 +329,7 @@ async function lookup(raw, { updateUrl = true } = {}) {
   }
 
   // Bare IPv6 address (contains ':' but no '/') → look up enclosing /48
-  if (input.includes(':') && !input.includes('/')) {
+  if (isIPv6Input && !input.includes('/')) {
     try {
       const cidr = ipv6ToSlash48(input);
       await lookupPrefix(cidr, viewKey, dateLabel);
@@ -266,8 +341,7 @@ async function lookup(raw, { updateUrl = true } = {}) {
   const lenMatch = input.match(/\/(\d+)$/);
   if (lenMatch) {
     const len = parseInt(lenMatch[1]);
-    const isIPv6 = input.includes(':');
-    if ((!isIPv6 && len < 24) || (isIPv6 && len < 48)) {
+    if ((!isIPv6Input && len < 24) || (isIPv6Input && len < 48)) {
       await lookupCIDRBlock(input, viewKey, dateLabel);
       return;
     }
@@ -1082,21 +1156,27 @@ async function runCompare({ updateUrl = true } = {}) {
   resetPg(); currentLookupCtx = null;
   chartSection.style.display = 'none';
 
-  // Show stats cards immediately with loading placeholders
-  asStatsReady = false;
-  asTableReady = false;
-  document.getElementById('as-stats-title').textContent =
-    `Network statistics (high confidence) \u2014 ${dateB} vs ${dateA}`;
-  document.getElementById('as-table-title').innerHTML =
-    `ASes deploying anycast \u2014 ${dateB} vs ${dateA} <span class="stat-note">(confident or better)</span>`;
-  ['as-stat-v4','as-stat-v6','as-stat-comb',
-   'bgp-stat-v4','bgp-stat-v6','bgp-stat-comb',
-   'moas-stat-v4','moas-stat-v6','moas-stat-comb'].forEach(id => {
-    document.getElementById(id).textContent = '\u2014';
-  });
-  document.getElementById('as-table-body').innerHTML = '';
-  asStatsSectionEl.style.display = '';
-  asTableSectionEl.style.display = '';
+  if (query) {
+    // Prefix-specific compare — hide global stats cards
+    asStatsSectionEl.style.display = 'none';
+    asTableSectionEl.style.display = 'none';
+  } else {
+    // Full census compare — show global stats cards with loading placeholders
+    asStatsReady = false;
+    asTableReady = false;
+    document.getElementById('as-stats-title').textContent =
+      `Network statistics (high confidence) \u2014 ${dateB} vs ${dateA}`;
+    document.getElementById('as-table-title').innerHTML =
+      `ASes deploying anycast \u2014 ${dateB} vs ${dateA} <span class="stat-note">(confident or better)</span>`;
+    ['as-stat-v4','as-stat-v6','as-stat-comb',
+     'bgp-stat-v4','bgp-stat-v6','bgp-stat-comb',
+     'moas-stat-v4','moas-stat-v6','moas-stat-comb'].forEach(id => {
+      document.getElementById(id).textContent = '\u2014';
+    });
+    document.getElementById('as-table-body').innerHTML = '';
+    asStatsSectionEl.style.display = '';
+    asTableSectionEl.style.display = '';
+  }
 
   if (updateUrl) {
     const params = new URLSearchParams();
@@ -1116,15 +1196,13 @@ async function runCompare({ updateUrl = true } = {}) {
     return;
   }
 
-  // Fire global stats comparison in parallel with the prefix/census query
-  initASStatsCompare(dateA, dateB);
-  initASTableCompare(dateA, dateB);
-
   if (query) {
-    // Prefix-level compare
+    // Prefix-level compare — no global stats
     await comparePrefixDetail(query, dateA, dateB);
   } else {
-    // Full census compare
+    // Full census compare — fire global stats in parallel
+    initASStatsCompare(dateA, dateB);
+    initASTableCompare(dateA, dateB);
     await compareCensus(dateA, dateB);
   }
 }

@@ -242,6 +242,12 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
   padding: 1rem 0;
 }
 
+.bogon-notice {
+  color: #d29922;
+  font-size: 0.9rem;
+  padding: 1rem 0;
+}
+
 .examples {
   margin-top: 2rem;
   font-size: 0.78rem;
