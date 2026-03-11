@@ -5,12 +5,12 @@ body {
   background: #0d1117;
   color: #e6edf3;
   margin: 0;
-  padding: 2rem 1rem;
+  padding: 2rem clamp(1rem, 3vw, 3rem);
   min-height: 100vh;
 }
 
 .container {
-  max-width: 860px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -24,6 +24,7 @@ h1 {
 .site-header {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   gap: 1rem;
   margin-bottom: 0.25rem;
 }
@@ -46,6 +47,7 @@ h1 {
   color: #8b949e;
   font-size: 0.85rem;
   margin: 0 0 2rem;
+  text-align: center;
 }
 
 .subtitle a {
