@@ -1094,13 +1094,18 @@ document.querySelectorAll('input[name="when"]').forEach(radio => {
 // Clicking the date input automatically switches to the "date" radio
 dateInput.addEventListener('focus', () => { whenDate.checked = true; dateInput.disabled = false; });
 
-// When a date is picked on the home page, refresh stats and encode in URL
-dateInput.addEventListener('change', () => {
+// When a date is picked or typed on the home page, refresh stats and encode in URL
+// Use 'input' so keyboard-typed dates update immediately once all segments are filled
+// (dateInput.value is only non-empty when a complete valid date is present)
+function onDateChange() {
   if (!dateInput.value || resultsEl.innerHTML) return;
+  whenDate.checked = true;
   const viewKey = dateInput.value.replace(/-/g, '/');
   history.replaceState(null, '', '?date=' + dateInput.value);
   refreshHomeStats(viewKey);
-});
+}
+dateInput.addEventListener('change', onDateChange);
+dateInput.addEventListener('input',  onDateChange);
 
 // ── Compare mode toggle ─────────────────────────────────────────────────────
 modeLookup.addEventListener('click', () => {
