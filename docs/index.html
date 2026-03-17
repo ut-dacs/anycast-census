@@ -59,6 +59,47 @@
     <div class="status" id="status">Loading query engine…</div>
     <div id="results"></div>
 
+    <div class="card" id="showcase-section" style="display:none;margin-bottom:1.5rem">
+      <div class="card-title" id="showcase-title">Anycast prefix counts — latest</div>
+      <table class="as-stats-table">
+        <thead>
+          <tr><th>Detection method</th><th>IPv4</th><th>IPv6</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Vantage points <span class="stat-note">(GCD)</span></td>
+            <td id="sc-vp4" class="stat-val">—</td>
+            <td id="sc-vp6" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>GCD — ICMP <span class="stat-note">(high confidence)</span></td>
+            <td id="sc-gcd-icmp4" class="stat-val">—</td>
+            <td id="sc-gcd-icmp6" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>GCD — TCP <span class="stat-note">(high confidence)</span></td>
+            <td id="sc-gcd-tcp4" class="stat-val">—</td>
+            <td id="sc-gcd-tcp6" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>AB — ICMP</td>
+            <td id="sc-ab-icmp4" class="stat-val">—</td>
+            <td id="sc-ab-icmp6" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>AB — TCP</td>
+            <td id="sc-ab-tcp4" class="stat-val">—</td>
+            <td id="sc-ab-tcp6" class="stat-val">—</td>
+          </tr>
+          <tr>
+            <td>AB — DNS</td>
+            <td id="sc-ab-dns4" class="stat-val">—</td>
+            <td id="sc-ab-dns6" class="stat-val">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="card" id="as-stats-section" style="display:none;margin-bottom:1.5rem">
       <div class="card-title" id="as-stats-title">Network statistics — latest</div>
       <table class="as-stats-table">

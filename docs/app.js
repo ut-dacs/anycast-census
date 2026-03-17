@@ -289,6 +289,7 @@ async function lookup(raw, { updateUrl = true } = {}) {
   chartSection.style.display = 'none';
   asStatsSectionEl.style.display = 'none';
   asTableSectionEl.style.display = 'none';
+  document.getElementById('showcase-section').style.display = 'none';
 
   if (updateUrl) {
     const params = new URLSearchParams({ q: input });
@@ -1160,6 +1161,7 @@ async function runCompare({ updateUrl = true } = {}) {
     // Prefix-specific compare — hide global stats cards
     asStatsSectionEl.style.display = 'none';
     asTableSectionEl.style.display = 'none';
+    document.getElementById('showcase-section').style.display = 'none';
   } else {
     // Full census compare — show global stats cards with loading placeholders
     asStatsReady = false;
@@ -1176,6 +1178,14 @@ async function runCompare({ updateUrl = true } = {}) {
     document.getElementById('as-table-body').innerHTML = '';
     asStatsSectionEl.style.display = '';
     asTableSectionEl.style.display = '';
+    // Showcase — reset cells and show immediately; fill data once chartData is ready
+    document.getElementById('showcase-title').textContent =
+      `Anycast prefix counts \u2014 ${dateB} vs ${dateA}`;
+    ['sc-vp4','sc-vp6','sc-gcd-icmp4','sc-gcd-icmp6','sc-gcd-tcp4','sc-gcd-tcp6',
+     'sc-ab-icmp4','sc-ab-icmp6','sc-ab-tcp4','sc-ab-tcp6','sc-ab-dns4','sc-ab-dns6'].forEach(id => {
+      document.getElementById(id).textContent = '\u2014';
+    });
+    document.getElementById('showcase-section').style.display = '';
   }
 
   if (updateUrl) {
@@ -1201,6 +1211,7 @@ async function runCompare({ updateUrl = true } = {}) {
     await comparePrefixDetail(query, dateA, dateB);
   } else {
     // Full census compare — fire global stats in parallel
+    try { initShowcaseCompare(dateA, dateB); } catch (_) {}
     initASStatsCompare(dateA, dateB);
     initASTableCompare(dateA, dateB);
     await compareCensus(dateA, dateB);
@@ -1632,6 +1643,7 @@ async function refreshHomeStats(viewKey = 'latest') {
     document.getElementById(id).textContent = '—';
   });
   document.getElementById('as-table-body').innerHTML = '';
+  try { initShowcase(viewKey); } catch (_) {}
   await Promise.all([initASStats(viewKey), initASTable(viewKey)]);
 }
 
@@ -1864,12 +1876,76 @@ async function initASTableCompare(dateA, dateB) {
   } catch (_) { /* optional */ }
 }
 
+function initShowcase(viewKey = 'latest') {
+  if (!chartData) return;
+  const showcaseEl = document.getElementById('showcase-section');
+  if (!showcaseEl) return;
+
+  let idx;
+  if (viewKey === 'latest') {
+    idx = chartData.dates.length - 1;
+  } else {
+    const dateStr = viewKey.replace(/\//g, '-');
+    idx = chartData.dates.indexOf(dateStr);
+    if (idx === -1) { showcaseEl.style.display = 'none'; return; }
+  }
+
+  const dateLabel = chartData.dates[idx];
+  document.getElementById('showcase-title').textContent =
+    `Anycast prefix counts \u2014 ${dateLabel}`;
+
+  const set = (id, key) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = fmtN(chartData[key]?.[idx] ?? 0);
+  };
+  set('sc-vp4',       'vp4');        set('sc-vp6',       'vp6');
+  set('sc-gcd-icmp4', 'gcd_icmp4'); set('sc-gcd-icmp6', 'gcd_icmp6');
+  set('sc-gcd-tcp4',  'gcd_tcp4');  set('sc-gcd-tcp6',  'gcd_tcp6');
+  set('sc-ab-icmp4',  'ab_icmp4');  set('sc-ab-icmp6',  'ab_icmp6');
+  set('sc-ab-tcp4',   'ab_tcp4');   set('sc-ab-tcp6',   'ab_tcp6');
+  set('sc-ab-dns4',   'ab_dns4');   set('sc-ab-dns6',   'ab_dns6');
+
+  showcaseEl.style.display = '';
+}
+
+function initShowcaseCompare(dateA, dateB) {
+  if (!chartData) return;
+  const showcaseEl = document.getElementById('showcase-section');
+  if (!showcaseEl) return;
+
+  const idxA = chartData.dates.indexOf(dateA);
+  const idxB = chartData.dates.indexOf(dateB);
+  if (idxA === -1 || idxB === -1) { showcaseEl.style.display = 'none'; return; }
+
+  document.getElementById('showcase-title').textContent =
+    `Anycast prefix counts \u2014 ${dateB} vs ${dateA}`;
+
+  const setDelta = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const vA = chartData[key]?.[idxA] ?? 0;
+    const vB = chartData[key]?.[idxB] ?? 0;
+    const d = vB - vA;
+    const ds = d === 0 ? '' :
+      `<span class="delta ${d > 0 ? 'delta-pos' : 'delta-neg'}">${d > 0 ? '+' : ''}${fmtN(d)}</span>`;
+    el.innerHTML = `${fmtN(vB)}${ds ? ' ' + ds : ''}`;
+  };
+  setDelta('sc-vp4',       'vp4');        setDelta('sc-vp6',       'vp6');
+  setDelta('sc-gcd-icmp4', 'gcd_icmp4'); setDelta('sc-gcd-icmp6', 'gcd_icmp6');
+  setDelta('sc-gcd-tcp4',  'gcd_tcp4');  setDelta('sc-gcd-tcp6',  'gcd_tcp6');
+  setDelta('sc-ab-icmp4',  'ab_icmp4');  setDelta('sc-ab-icmp6',  'ab_icmp6');
+  setDelta('sc-ab-tcp4',   'ab_tcp4');   setDelta('sc-ab-tcp6',   'ab_tcp6');
+  setDelta('sc-ab-dns4',   'ab_dns4');   setDelta('sc-ab-dns6',   'ab_dns6');
+
+  showcaseEl.style.display = '';
+}
+
 async function initChart() {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const res = await fetch(baseUrl + `stats-history.json?v=${today}`);
+    const res = await fetch(baseUrl + `stats-history.json`, { cache: 'no-cache' });
     if (!res.ok) return;
     chartData = await res.json();
+    try { initShowcase(selectedViewKey()); } catch (_) {}
     document.getElementById('chart-section').style.display = '';
     buildLegend();
     drawChart();

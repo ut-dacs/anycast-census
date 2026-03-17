@@ -14,6 +14,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Rebuild stats-history.json from all stats files
+        run: |
+          python3 - << 'PYEOF'
+          import json, re, glob
+
+          pattern = re.compile(
+              r'ICMPv4 GCD nodes:\s*([\d,]+).*?'
+              r'ICMPv6 GCD nodes:\s*([\d,]+).*?'
+              r'Anycast-based ICMPv4:\s*([\d,]+).*?'
+              r'Anycast-based TCPv4:\s*([\d,]+).*?'
+              r'Anycast-based (?:DNS|UDP)v4:\s*([\d,]+).*?'
+              r'GCD-based ICMPv4:\s*([\d,]+).*?'
+              r'GCD-based TCPv4:\s*([\d,]+).*?'
+              r'Anycast-based ICMPv6:\s*([\d,]+).*?'
+              r'Anycast-based TCPv6:\s*([\d,]+).*?'
+              r'Anycast-based (?:DNS|UDP)v6:\s*([\d,]+).*?'
+              r'GCD-based ICMPv6:\s*([\d,]+).*?'
+              r'GCD-based TCPv6:\s*([\d,]+)',
+              re.DOTALL
+          )
+
+          files = sorted(glob.glob('[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/stats'))
+          result = {k: [] for k in ['dates','vp4','vp6','ab_icmp4','ab_tcp4','ab_dns4',
+                                     'gcd_icmp4','gcd_tcp4','ab_icmp6','ab_tcp6','ab_dns6',
+                                     'gcd_icmp6','gcd_tcp6']}
+          skipped = 0
+          for f in files:
+              parts = f.split('/')
+              date = f'{parts[0]}-{parts[1]}-{parts[2]}'
+              try:
+                  m = pattern.search(open(f).read())
+                  if not m:
+                      skipped += 1
+                      continue
+                  g = [int(x.replace(',', '')) for x in m.groups()]
+                  result['dates'].append(date)
+                  result['vp4'].append(g[0]);     result['vp6'].append(g[1])
+                  result['ab_icmp4'].append(g[2]); result['ab_tcp4'].append(g[3]); result['ab_dns4'].append(g[4])
+                  result['gcd_icmp4'].append(g[5]); result['gcd_tcp4'].append(g[6])
+                  result['ab_icmp6'].append(g[7]); result['ab_tcp6'].append(g[8]); result['ab_dns6'].append(g[9])
+                  result['gcd_icmp6'].append(g[10]); result['gcd_tcp6'].append(g[11])
+              except Exception as e:
+                  print(f'  Error {date}: {e}')
+                  skipped += 1
+          print(f'Parsed {len(result["dates"])} dates, {skipped} skipped')
+          if result["dates"]:
+              print(f'Range: {result["dates"][0]} → {result["dates"][-1]}')
+          with open('docs/stats-history.json', 'w') as out:
+              json.dump(result, out, separators=(',', ':'))
+          PYEOF
+
       - name: Copy web files to root for serving
         run: cp docs/* .
 
