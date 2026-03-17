@@ -698,9 +698,9 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
         <thead><tr>
           <th data-sort="ver">Ver<span class="sort-ind"></span></th>
           <th data-sort="prefix">Prefix<span class="sort-ind"></span></th>
-          <th data-sort="conf">Confidence<span class="sort-ind"></span></th>
-          <th data-sort="ab">AB sites<span class="sort-ind"></span></th>
-          <th data-sort="gcd">GCD sites<span class="sort-ind"></span></th>
+          <th data-sort="conf">Confidence<span class="info-icon" tabindex="0" data-tip="High: GCD > 1. Medium: AB > 2. Low: AB &le; 2 and GCD &le; 1.">ⓘ</span><span class="sort-ind"></span></th>
+          <th data-sort="ab">AB sites<span class="info-icon" tabindex="0" data-tip="Max anycast sites detected across ICMP/TCP/DNS probing (MAnycast2). AB > 2 is recommended to reduce false positives.">ⓘ</span><span class="sort-ind"></span></th>
+          <th data-sort="gcd">GCD sites<span class="info-icon" tabindex="0" data-tip="Max GCD score across ICMP/TCP Ark measurements. GCD > 1 indicates anycast with high confidence.">ⓘ</span><span class="sort-ind"></span></th>
           <th>ASN(s)</th>
         </tr></thead>
         <tbody>${initialBody}</tbody>
@@ -729,6 +729,8 @@ function renderResult(row, isIPv6, locations, dateLabel) {
     ? `<span class="tag tag-warn">⚠ partial (mixed unicast/anycast)</span>`
     : '';
 
+  const tip = t => `<span class="info-icon" tabindex="0" data-tip="${t}">ⓘ</span>`;
+
   return `
     <div class="card">
       <div class="card-title">Result &mdash; ${escHtml(dateLabel)}</div>
@@ -742,23 +744,23 @@ function renderResult(row, isIPv6, locations, dateLabel) {
           <th>Method</th><th>Sites detected</th>
         </tr>
         <tr>
-          <td>Anycast-based ICMP (AB)</td>
+          <td>Anycast-based ICMP (AB)${tip('MAnycast2: counts distinct anycast sites reached via ICMP probes. AB > 2 is recommended to reduce false positives.')}</td>
           <td class="${ab_icmp ? 'count' : 'count-zero'}">${fmtN(ab_icmp)}</td>
         </tr>
         <tr>
-          <td>Anycast-based TCP (AB)</td>
+          <td>Anycast-based TCP (AB)${tip('MAnycast2 using TCP SYNACK probes on a high (non-standard) port.')}</td>
           <td class="${ab_tcp ? 'count' : 'count-zero'}">${fmtN(ab_tcp)}</td>
         </tr>
         <tr>
-          <td>Anycast-based DNS (AB)</td>
+          <td>Anycast-based DNS (AB)${tip('MAnycast2 using DNS queries.')}</td>
           <td class="${ab_dns ? 'count' : 'count-zero'}">${fmtN(ab_dns)}</td>
         </tr>
         <tr>
-          <td>Latency-based ICMP (GCD)</td>
+          <td>Latency-based ICMP (GCD)${tip('GCD: detects anycast by comparing RTTs from Ark vantage points via ICMP. GCD > 1 indicates anycast with high precision.')}</td>
           <td class="${gcd_icmp ? 'count' : 'count-zero'}">${fmtN(gcd_icmp)}</td>
         </tr>
         <tr>
-          <td>Latency-based TCP (GCD)</td>
+          <td>Latency-based TCP (GCD)${tip('GCD using TCP SYNACK probes on a high (non-standard) port. Complements ICMP for prefixes that filter ping.')}</td>
           <td class="${gcd_tcp ? 'count' : 'count-zero'}">${fmtN(gcd_tcp)}</td>
         </tr>
       </table>
@@ -768,13 +770,13 @@ function renderResult(row, isIPv6, locations, dateLabel) {
       <div class="card-title">Routing</div>
       <table>
         <tr>
-          <th>Backing prefix</th>
+          <th>Backing prefix${tip('Associated BGP prefix as seen by RouteViews collectors.')}</th>
           <td>${row.backing_prefix
             ? `<a class="tag tag-link" data-lookup="${escHtml(row.backing_prefix)}" href="?q=${encodeURIComponent(row.backing_prefix)}">${escHtml(row.backing_prefix)}</a>`
             : '—'}</td>
         </tr>
         <tr>
-          <th>ASN(s)</th>
+          <th>ASN(s)${tip('ASN(s) associated with this anycast prefix.')}</th>
           <td>${asns.map(a => `<a class="tag tag-link" data-lookup="AS${escHtml(a)}" href="?q=AS${encodeURIComponent(a)}">AS${escHtml(a)}</a>`).join(' ') || '—'}</td>
         </tr>
       </table>

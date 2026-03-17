@@ -362,6 +362,58 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
 .delta-pos { color: #3fb950; }
 .delta-neg { color: #f85149; }
 
+/* ── Info icon tooltips ───────────────────────────────────────────────────── */
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+  margin-left: 0.3em;
+  vertical-align: middle;
+  text-transform: none;
+  flex-shrink: 0;
+  user-select: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.info-icon:hover,
+.info-icon:focus { border-color: #58a6ff; color: #58a6ff; outline: none; }
+
+.info-icon::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 1.15em;
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 260px;
+  min-width: 160px;
+  padding: 0.45rem 0.65rem;
+  white-space: normal;
+  text-align: left;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.info-icon:hover::after,
+.info-icon:focus::after { opacity: 1; }
+
 .prefix-list {
   width: 100%;
   border-collapse: collapse;

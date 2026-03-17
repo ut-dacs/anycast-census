@@ -67,32 +67,32 @@
         </thead>
         <tbody>
           <tr>
-            <td>Vantage points <span class="stat-note">(GCD)</span></td>
+            <td>Vantage points <span class="stat-note">(GCD)</span><span class="info-icon" tabindex="0" data-tip="Number of Ark probes used for RTT measurements on this census date.">ⓘ</span></td>
             <td id="sc-vp4" class="stat-val">—</td>
             <td id="sc-vp6" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>GCD — ICMP <span class="stat-note">(high confidence)</span></td>
+            <td>GCD — ICMP <span class="stat-note">(high confidence)</span><span class="info-icon" tabindex="0" data-tip="GCD (latency-based): detects anycast by comparing RTTs from many vantage points using ICMP pings. A GCD > 1 indicates anycast with high precision.">ⓘ</span></td>
             <td id="sc-gcd-icmp4" class="stat-val">—</td>
             <td id="sc-gcd-icmp6" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>GCD — TCP <span class="stat-note">(high confidence)</span></td>
+            <td>GCD — TCP <span class="stat-note">(high confidence)</span><span class="info-icon" tabindex="0" data-tip="Same as GCD ICMP but uses TCP SYNACK probes on a high (non-standard) port.">ⓘ</span></td>
             <td id="sc-gcd-tcp4" class="stat-val">—</td>
             <td id="sc-gcd-tcp6" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>AB — ICMP</td>
+            <td>AB — ICMP<span class="info-icon" tabindex="0" data-tip="AB (MAnycast2): counts the number of distinct anycast sites reached via ICMP probes. AB > 2 is recommended to reduce false positives.">ⓘ</span></td>
             <td id="sc-ab-icmp4" class="stat-val">—</td>
             <td id="sc-ab-icmp6" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>AB — TCP</td>
+            <td>AB — TCP<span class="info-icon" tabindex="0" data-tip="MAnycast2 approach using TCP SYNACK probes on a high (non-standard) port.">ⓘ</span></td>
             <td id="sc-ab-tcp4" class="stat-val">—</td>
             <td id="sc-ab-tcp6" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>AB — DNS</td>
+            <td>AB — DNS<span class="info-icon" tabindex="0" data-tip="MAnycast2 approach using DNS queries.">ⓘ</span></td>
             <td id="sc-ab-dns4" class="stat-val">—</td>
             <td id="sc-ab-dns6" class="stat-val">—</td>
           </tr>
@@ -108,19 +108,19 @@
         </thead>
         <tbody>
           <tr>
-            <td>Anycast ASes</td>
+            <td>Anycast ASes<span class="info-icon" tabindex="0" data-tip="ASN(s) associated with the anycast prefixes. Union counts each ASN once across IPv4 and IPv6.">ⓘ</span></td>
             <td id="as-stat-v4"   class="stat-val">—</td>
             <td id="as-stat-v6"   class="stat-val">—</td>
             <td id="as-stat-comb" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>Unique BGP prefixes <span class="stat-note">(backing_prefix)</span></td>
+            <td>Unique BGP prefixes <span class="stat-note">(backing_prefix)</span><span class="info-icon" tabindex="0" data-tip="Associated prefix as seen by RouteViews collectors. Multiple anycast /24s may share one BGP prefix, so this count is lower than the total prefix count.">ⓘ</span></td>
             <td id="bgp-stat-v4"   class="stat-val">—</td>
             <td id="bgp-stat-v6"   class="stat-val">—</td>
             <td id="bgp-stat-comb" class="stat-val">—</td>
           </tr>
           <tr>
-            <td>MOAS prefixes</td>
+            <td>MOAS prefixes<span class="info-icon" tabindex="0" data-tip="Multiple Origin AS: BGP prefixes announced simultaneously by more than one ASN. This is a common pattern in anycast deployments where redundancy is achieved across providers.">ⓘ</span></td>
             <td id="moas-stat-v4"   class="stat-val">—</td>
             <td id="moas-stat-v6"   class="stat-val">—</td>
             <td id="moas-stat-comb" class="stat-val">—</td>
