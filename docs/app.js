@@ -2047,7 +2047,12 @@ function drawChart() {
     ctx.fillText(dates[i].slice(0, 7), x, PAD.top + plotH + 8);
   }
 
-  // Series lines
+  // Series lines — clipped to plot area so lines never bleed outside the axes
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.left, PAD.top, plotW, plotH);
+  ctx.clip();
+
   for (const s of series) {
     if (chartHidden.has(s.key)) continue;
     const vals = chartData[s.key];
@@ -2063,6 +2068,8 @@ function drawChart() {
     }
     ctx.stroke();
   }
+
+  ctx.restore();
 
   // Drag-select range overlay
   if (chartDragStartX !== null && chartDragCurrentX !== null) {
@@ -2135,8 +2142,11 @@ function niceYTicks(max, count) {
   const base  = Math.pow(10, exp);
   const step  = [1, 2, 2.5, 5, 10].find(f => f * base >= rough) * base;
   const result = [];
-  for (let v = step; v <= max * 1.05 + step * 0.01; v += step)
+  // Always continue until the tick is >= max, so yMax is never below the data
+  for (let v = step; ; v += step) {
     result.push(Math.round(v * 1e6) / 1e6);
+    if (v >= max) break;
+  }
   return result;
 }
 
