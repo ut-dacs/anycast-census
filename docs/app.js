@@ -668,6 +668,10 @@ async function lookupPrefix(prefix, viewKey, dateLabel) {
       resultsEl.innerHTML = `<div class="not-found">
         Prefix <strong>${escHtml(prefix)}</strong> not found in the census for <strong>${escHtml(dateLabel)}</strong>.
         It may be unicast-only, not yet detected, or not present on that date.
+        <br><br>
+        If you know of a responsive IP in this prefix that our hitlist may be missing, feel free to
+        <a href="mailto:remi.hendriks@utwente.nl" style="color:#58a6ff">reach out</a> —
+        we are happy to improve coverage.
       </div>`;
       return;
     }
