@@ -33,19 +33,31 @@
 
     <div id="lookup-date-row" class="date-row">
       <span>As of:</span>
-      <label><input type="radio" name="when" id="when-latest" value="latest" checked> Latest</label>
-      <label>
-        <input type="radio" name="when" id="when-date" value="date">
-        <input type="date" id="date-input" min="2024-03-21" disabled>
-      </label>
+      <button id="btn-latest" class="date-mode-btn date-mode-active">Latest</button>
+      <div id="date-nav-group" style="display:none;align-items:center;gap:0.3rem">
+        <button id="btn-prev-day" class="date-nav-btn" title="Previous day">&#8592;</button>
+        <span id="date-label-display" class="date-label-display"></span>
+        <button id="btn-next-day" class="date-nav-btn" title="Next day">&#8594;</button>
+      </div>
+      <button id="btn-pick-date" class="date-mode-btn">&#x1F4C5; Pick date</button>
+      <!-- Hidden date input — value store + showPicker() target -->
+      <input type="date" id="date-input" min="2024-03-21"
+        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+      <!-- Hidden radios kept for JS compatibility (getViewKey reads them) -->
+      <input type="radio" name="when" id="when-latest" value="latest" checked style="display:none">
+      <input type="radio" name="when" id="when-date"   value="date"   style="display:none">
     </div>
 
     <div id="compare-row" class="date-row" style="display:none">
       <span>Date A:</span>
-      <input type="date" id="cmp-date-a" min="2024-03-21">
+      <button id="btn-cmp-a" class="date-mode-btn">Pick date</button>
       <span>Date B:</span>
-      <input type="date" id="cmp-date-b" min="2024-03-21">
-      <button id="cmp-btn" class="cmp-btn">Compare</button>
+      <button id="btn-cmp-b" class="date-mode-btn">Pick date</button>
+      <input type="date" id="cmp-date-a" min="2024-03-21"
+        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+      <input type="date" id="cmp-date-b" min="2024-03-21"
+        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+      <button id="cmp-btn" class="date-mode-btn">Compare</button>
     </div>
 
     <div class="examples" id="examples" style="display:none">

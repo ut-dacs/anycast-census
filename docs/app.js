@@ -19,6 +19,8 @@ const compareRow  = document.getElementById('compare-row');
 const cmpDateA    = document.getElementById('cmp-date-a');
 const cmpDateB    = document.getElementById('cmp-date-b');
 const cmpBtn      = document.getElementById('cmp-btn');
+const btnCmpA     = document.getElementById('btn-cmp-a');
+const btnCmpB     = document.getElementById('btn-cmp-b');
 let isCompareMode = false;
 
 // ── Pagination state ────────────────────────────────────────────────────────
@@ -158,11 +160,11 @@ try {
     whenDate.checked   = true;
     whenLatest.checked = false;
     dateInput.value    = initDate;
-    dateInput.disabled = false;
+    syncDateUI(initDate);
   }
 
   const homeViewKey = (!initQ && !initMode && initDate) ? initDate.replace(/-/g, '/') : 'latest';
-  refreshHomeStats(homeViewKey);
+  if (!initQ && !initMode) refreshHomeStats(homeViewKey);
 
   if (initMode === 'compare') {
     const dA = initParams.get('dateA');
@@ -173,8 +175,8 @@ try {
       modeLookup.classList.remove('active');
       lookupRow.style.display = 'none';
       compareRow.style.display = '';
-      cmpDateA.value = dA;
-      cmpDateB.value = dB;
+      cmpDateA.value = dA; syncCmpBtn(btnCmpA, cmpDateA);
+      cmpDateB.value = dB; syncCmpBtn(btnCmpB, cmpDateB);
       if (initQ) inputEl.value = initQ;
       await runCompare({ updateUrl: false });
     }
@@ -184,7 +186,7 @@ try {
       whenDate.checked   = true;
       whenLatest.checked = false;
       dateInput.value    = initDate;
-      dateInput.disabled = false;
+      syncDateUI(initDate);
     }
     await lookup(initQ, { updateUrl: false });
   }
@@ -216,8 +218,8 @@ window.addEventListener('popstate', async e => {
       modeLookup.classList.remove('active');
       lookupRow.style.display = 'none';
       compareRow.style.display = '';
-      cmpDateA.value = dateA;
-      cmpDateB.value = dateB;
+      cmpDateA.value = dateA; syncCmpBtn(btnCmpA, cmpDateA);
+      cmpDateB.value = dateB; syncCmpBtn(btnCmpB, cmpDateB);
       inputEl.value = q || '';
       await runCompare({ updateUrl: false });
     }
@@ -229,11 +231,11 @@ window.addEventListener('popstate', async e => {
       whenDate.checked   = true;
       whenLatest.checked = false;
       dateInput.value    = date;
-      dateInput.disabled = false;
+      syncDateUI(date);
     } else {
       whenLatest.checked = true;
       whenDate.checked   = false;
-      dateInput.disabled = true;
+      syncDateUI(null);
     }
     await lookup(q, { updateUrl: false });
   } else {
@@ -247,11 +249,11 @@ window.addEventListener('popstate', async e => {
       whenDate.checked   = true;
       whenLatest.checked = false;
       dateInput.value    = date;
-      dateInput.disabled = false;
+      syncDateUI(date);
     } else {
       whenLatest.checked = true;
       whenDate.checked   = false;
-      dateInput.disabled = true;
+      syncDateUI(null);
     }
     if (chartData) chartSection.style.display = '';
     refreshHomeStats(date ? date.replace(/-/g, '/') : 'latest');
@@ -366,6 +368,21 @@ async function lookup(raw, { updateUrl = true } = {}) {
 }
 
 // ── Domain lookup via Google DoH ─────────────────────────────────────────
+// Confidence level for a census row (_ver: 'v4'|'v6')
+function confOf(row) {
+  if (!row) return null;
+  const n = v => Number(v) || 0;
+  if (row._ver === 'v4') {
+    if (Math.max(n(row.GCD_ICMPv4), n(row.GCD_TCPv4)) > 1) return 'high';
+    if (Math.max(n(row.AB_ICMPv4), n(row.AB_TCPv4), n(row.AB_DNSv4)) > 2) return 'medium';
+    return 'low';
+  } else {
+    if (Math.max(n(row.GCD_ICMPv6), n(row.GCD_TCPv6)) > 1) return 'high';
+    if (Math.max(n(row.AB_ICMPv6), n(row.AB_TCPv6), n(row.AB_DNSv6)) > 2) return 'medium';
+    return 'low';
+  }
+}
+
 async function dohQuery(name, type) {
   const typeNum = { A: 1, AAAA: 28, MX: 15, NS: 2 }[type];
   try {
@@ -380,23 +397,15 @@ async function dohQuery(name, type) {
   } catch { return []; }
 }
 
-async function lookupDomain(domain, viewKey, dateLabel) {
-  try {
-  setStatus(`Resolving ${escHtml(domain)}\u2026`);
-
-  // Resolve A, AAAA, MX, NS in parallel
+// Resolve all DNS records + IP→prefix mapping for a domain.
+// Returns null if no records found; caller handles status messages.
+async function resolveDomainPrefixes(domain) {
   const [aRecs, aaaaRecs, mxRecs, nsRecs] = await Promise.all([
     dohQuery(domain, 'A'), dohQuery(domain, 'AAAA'),
     dohQuery(domain, 'MX'), dohQuery(domain, 'NS'),
   ]);
+  if (!aRecs.length && !aaaaRecs.length && !mxRecs.length && !nsRecs.length) return null;
 
-  if (!aRecs.length && !aaaaRecs.length && !mxRecs.length && !nsRecs.length) {
-    setStatus('');
-    resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
-    return;
-  }
-
-  // Parse NS / MX hostnames
   const nsHosts = [...new Set(nsRecs.map(r => (r.data || '').replace(/\.$/, '')).filter(Boolean))];
   const mxEntries = mxRecs.map(r => {
     const p = (r.data || '').split(' ');
@@ -404,7 +413,6 @@ async function lookupDomain(domain, viewKey, dateLabel) {
   }).filter(e => e.host);
   const mxHosts = [...new Set(mxEntries.map(e => e.host))];
 
-  // Resolve NS / MX hosts to IPs
   setStatus('Resolving nameservers and mail servers\u2026');
   const resolveHost = async host => {
     const [a, aaaa] = await Promise.all([dohQuery(host, 'A'), dohQuery(host, 'AAAA')]);
@@ -415,7 +423,6 @@ async function lookupDomain(domain, viewKey, dateLabel) {
     Promise.all(mxHosts.map(resolveHost)),
   ]);
 
-  // Collect all prefixes
   const p4Set = new Set(), p6Set = new Set(), ip2prefix = {};
   const addIP4 = ip => {
     const m = /^(\d+)\.(\d+)\.(\d+)\./.exec(ip);
@@ -429,119 +436,219 @@ async function lookupDomain(domain, viewKey, dateLabel) {
   aaaaRecs.forEach(r => addIP6(r.data || ''));
   [...nsResolved, ...mxResolved].forEach(({ ips4, ips6 }) => { ips4.forEach(addIP4); ips6.forEach(addIP6); });
 
-  // Batch census query
-  setStatus(`Checking ${p4Set.size + p6Set.size} prefixes in census\u2026`);
-  // censusMap: prefix → { row data, _ver: 'v4'|'v6' }
-  const censusMap = {};
+  return { aRecs, aaaaRecs, nsResolved, mxResolved, mxEntries, p4Set, p6Set, ip2prefix };
+}
+
+// Shared rendering helpers for domain results
+function domainStatusCell(prefix, censusMap) {
+  const row = prefix ? censusMap[prefix] : null;
+  if (!row) return `<td class="domain-status domain-not-anycast">not in census</td>`;
+  const conf = confOf(row);
+  const nloc = parseLocations(row.locations).length;
+  const locStr = nloc > 0 ? ` &middot; ${nloc} PoP${nloc !== 1 ? 's' : ''}` : '';
+  return `<td class="domain-status domain-anycast domain-anycast-${conf}">anycast &middot; ${conf}${locStr}</td>`;
+}
+function domainClassifyIPs(ips, ip2prefix, censusMap) {
+  if (!ips.length) return null;
+  const found = ips.filter(ip => ip2prefix[ip] && censusMap[ip2prefix[ip]]).length;
+  if (found === 0) return 'unicast';
+  if (found === ips.length) return 'anycast';
+  return 'mixed';
+}
+function domainClassifyBadge(cls) {
+  return cls ? ` <span class="domain-classify domain-classify-${cls}">${cls}</span>` : '';
+}
+
+async function lookupDomain(domain, viewKey, dateLabel) {
   try {
-    await registerViews(viewKey);
-    if (p4Set.size) {
-      const list = [...p4Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
-      (await conn.query(`SELECT * FROM ipv4 WHERE prefix IN (${list})`))
-        .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v4' }; });
+    setStatus(`Resolving ${escHtml(domain)}\u2026`);
+    const resolved = await resolveDomainPrefixes(domain);
+    if (!resolved) {
+      setStatus('');
+      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
+      return;
     }
-    if (p6Set.size) {
-      const list = [...p6Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
-      (await conn.query(`SELECT * FROM ipv6 WHERE prefix IN (${list})`))
-        .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v6' }; });
+    const { aRecs, aaaaRecs, nsResolved, mxResolved, mxEntries, p4Set, p6Set, ip2prefix } = resolved;
+
+    setStatus(`Checking ${p4Set.size + p6Set.size} prefixes in census\u2026`);
+    const censusMap = {};
+    try {
+      await registerViews(viewKey);
+      if (p4Set.size) {
+        const list = [...p4Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+        (await conn.query(`SELECT * FROM ipv4 WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v4' }; });
+      }
+      if (p6Set.size) {
+        const list = [...p6Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+        (await conn.query(`SELECT * FROM ipv6 WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v6' }; });
+      }
+    } catch (e) { console.error('Domain census query failed:', e); }
+    setStatus('');
+
+    const statusCell = prefix => domainStatusCell(prefix, censusMap);
+    const classifyIPs = ips => domainClassifyIPs(ips, ip2prefix, censusMap);
+    const classifyBadge = cls => domainClassifyBadge(cls);
+    const ipTableRow = ip => {
+      const prefix = ip2prefix[ip];
+      return `<tr class="pl-row" data-prefix="${escHtml(prefix || ip)}">
+        <td class="domain-ip">${escHtml(ip)}</td>
+        <td class="domain-prefix">${prefix ? escHtml(prefix) : '—'}</td>
+        ${statusCell(prefix)}
+      </tr>`;
+    };
+    const ipTable = (ips4, ips6) => {
+      const rows = [...ips4.map(ipTableRow), ...ips6.map(ipTableRow)];
+      return rows.length ? `<table class="domain-table">
+        <thead><tr><th>IP address</th><th>Prefix</th><th>Anycast</th></tr></thead>
+        <tbody>${rows.join('')}</tbody></table>` : '<p class="loc-note">Could not resolve.</p>';
+    };
+    const section = (title, body, cls) =>
+      `<div class="domain-section"><div class="domain-rec-type">${title}${classifyBadge(cls)}</div>${body}</div>`;
+
+    let html = `<div class="card">
+      <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain</span></div>
+      <p class="loc-note">Census: ${escHtml(dateLabel)} &nbsp;&middot;&nbsp; Resolved via Google Public DNS<br>
+      <span style="font-size:0.75em;color:#d29922">&#9432; DNS records reflect today&rsquo;s resolution and may differ from the selected census date.</span><br>
+      <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
+
+    if (aRecs.length) {
+      const ips = aRecs.map(r => r.data);
+      html += section('A records', ipTable(ips, []), classifyIPs(ips));
     }
-  } catch (e) { console.error('Domain census query failed:', e); }
-
-  setStatus('');
-
-  // Helpers
-  const n = v => Number(v) || 0; // safely coerce BigInt or undefined to number
-  const confOf = row => {
-    if (!row) return null;
-    if (row._ver === 'v4') {
-      if (Math.max(n(row.GCD_ICMPv4), n(row.GCD_TCPv4)) > 1) return 'high';
-      if (Math.max(n(row.AB_ICMPv4), n(row.AB_TCPv4), n(row.AB_DNSv4)) > 2) return 'medium';
-      return 'low';
-    } else {
-      if (Math.max(n(row.GCD_ICMPv6), n(row.GCD_TCPv6)) > 1) return 'high';
-      if (Math.max(n(row.AB_ICMPv6), n(row.AB_TCPv6), n(row.AB_DNSv6)) > 2) return 'medium';
-      return 'low';
+    if (aaaaRecs.length) {
+      const ips = aaaaRecs.map(r => r.data);
+      html += section('AAAA records', ipTable([], ips), classifyIPs(ips));
     }
-  };
-  const statusCell = prefix => {
-    const row = prefix ? censusMap[prefix] : null;
-    if (!row) return `<td class="domain-status domain-not-anycast">not in census</td>`;
-    const conf = confOf(row);
-    return `<td class="domain-status domain-anycast domain-anycast-${conf}">anycast &middot; ${conf}</td>`;
-  };
-  const ipTableRow = ip => {
-    const prefix = ip2prefix[ip];
-    return `<tr class="pl-row" data-prefix="${escHtml(prefix || ip)}">
-      <td class="domain-ip">${escHtml(ip)}</td>
-      <td class="domain-prefix">${prefix ? escHtml(prefix) : '—'}</td>
-      ${statusCell(prefix)}
-    </tr>`;
-  };
-  const ipTable = (ips4, ips6) => {
-    const rows = [...ips4.map(ipTableRow), ...ips6.map(ipTableRow)];
-    return rows.length ? `<table class="domain-table">
-      <thead><tr><th>IP address</th><th>Prefix</th><th>Anycast</th></tr></thead>
-      <tbody>${rows.join('')}</tbody></table>` : '<p class="loc-note">Could not resolve.</p>';
-  };
-
-  // Classify a set of IPs: 'anycast'|'mixed'|'unicast' or null if empty
-  const classifyIPs = ips => {
-    if (!ips.length) return null;
-    const found = ips.filter(ip => ip2prefix[ip] && censusMap[ip2prefix[ip]]).length;
-    if (found === 0) return 'unicast';
-    if (found === ips.length) return 'anycast';
-    return 'mixed';
-  };
-  const classifyBadge = cls =>
-    cls ? ` <span class="domain-classify domain-classify-${cls}">${cls}</span>` : '';
-
-  let html = `<div class="card">
-    <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain</span></div>
-    <p class="loc-note">Resolved via Google Public DNS &nbsp;&middot;&nbsp; Census: ${escHtml(dateLabel)}<br>
-    <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
-
-  const section = (title, body, cls) =>
-    `<div class="domain-section"><div class="domain-rec-type">${title}${classifyBadge(cls)}</div>${body}</div>`;
-
-  if (aRecs.length) {
-    const ips = aRecs.map(r => r.data);
-    html += section('A records', ipTable(ips, []), classifyIPs(ips));
-  }
-  if (aaaaRecs.length) {
-    const ips = aaaaRecs.map(r => r.data);
-    html += section('AAAA records', ipTable([], ips), classifyIPs(ips));
-  }
-  if (nsResolved.length) {
-    const allNsIPs = nsResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
-    html += `<div class="domain-section"><div class="domain-rec-type">NS records${classifyBadge(classifyIPs(allNsIPs))}</div>`;
-    nsResolved.forEach(({ host, ips4, ips6 }) => {
-      const hostIPs = [...ips4, ...ips6];
-      const badge = hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : '';
-      html += `<div class="domain-host-label">${escHtml(host)}${badge}</div>${ipTable(ips4, ips6)}`;
-    });
-    html += `</div>`;
-  }
-  if (mxResolved.length) {
-    const allMxIPs = mxResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
-    html += `<div class="domain-section"><div class="domain-rec-type">MX records${classifyBadge(classifyIPs(allMxIPs))}</div>`;
-    const mxByHost = Object.fromEntries(mxResolved.map(r => [r.host, r]));
-    const seen = new Set();
-    for (const { priority, host } of [...mxEntries].sort((a, b) => a.priority - b.priority)) {
-      if (seen.has(host)) continue; seen.add(host);
-      const { ips4, ips6 } = mxByHost[host] || { ips4: [], ips6: [] };
-      const hostIPs = [...ips4, ...ips6];
-      const badge = hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : '';
-      html += `<div class="domain-host-label">${escHtml(host)} <span class="stat-note">(priority ${priority})</span>${badge}</div>${ipTable(ips4, ips6)}`;
+    if (nsResolved.length) {
+      const allNsIPs = nsResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+      html += `<div class="domain-section"><div class="domain-rec-type">NS records${classifyBadge(classifyIPs(allNsIPs))}</div>`;
+      nsResolved.forEach(({ host, ips4, ips6 }) => {
+        const hostIPs = [...ips4, ...ips6];
+        html += `<div class="domain-host-label">${escHtml(host)}${hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : ''}</div>${ipTable(ips4, ips6)}`;
+      });
+      html += `</div>`;
+    }
+    if (mxResolved.length) {
+      const allMxIPs = mxResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+      html += `<div class="domain-section"><div class="domain-rec-type">MX records${classifyBadge(classifyIPs(allMxIPs))}</div>`;
+      const mxByHost = Object.fromEntries(mxResolved.map(r => [r.host, r]));
+      const seen = new Set();
+      for (const { priority, host } of [...mxEntries].sort((a, b) => a.priority - b.priority)) {
+        if (seen.has(host)) continue; seen.add(host);
+        const { ips4, ips6 } = mxByHost[host] || { ips4: [], ips6: [] };
+        const hostIPs = [...ips4, ...ips6];
+        html += `<div class="domain-host-label">${escHtml(host)} <span class="stat-note">(priority ${priority})</span>${hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : ''}</div>${ipTable(ips4, ips6)}`;
+      }
+      html += `</div>`;
     }
     html += `</div>`;
-  }
-
-  html += `</div>`;
-  resultsEl.innerHTML = html;
+    currentLookupCtx = { viewKey, dateLabel };
+    resultsEl.innerHTML = html;
   } catch (err) {
     setStatus('');
     console.error('lookupDomain error:', err);
     resultsEl.innerHTML = `<div class="not-found">Error resolving domain: ${escHtml(err.message ?? String(err))}</div>`;
+  }
+}
+
+async function compareDomain(domain, dateA, dateB) {
+  try {
+    setStatus(`Resolving ${escHtml(domain)}\u2026`);
+    const resolved = await resolveDomainPrefixes(domain);
+    if (!resolved) {
+      setStatus('');
+      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
+      return;
+    }
+    const { aRecs, aaaaRecs, nsResolved, mxResolved, mxEntries, p4Set, p6Set, ip2prefix } = resolved;
+
+    setStatus(`Checking ${p4Set.size + p6Set.size} prefixes for ${dateA} and ${dateB}\u2026`);
+    const censusA = {}, censusB = {};
+    try {
+      if (p4Set.size) {
+        const list = [...p4Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+        (await conn.query(`SELECT * FROM ipv4_a WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusA[j.prefix] = { ...j, _ver: 'v4' }; });
+        (await conn.query(`SELECT * FROM ipv4_b WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusB[j.prefix] = { ...j, _ver: 'v4' }; });
+      }
+      if (p6Set.size) {
+        const list = [...p6Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+        (await conn.query(`SELECT * FROM ipv6_a WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusA[j.prefix] = { ...j, _ver: 'v6' }; });
+        (await conn.query(`SELECT * FROM ipv6_b WHERE prefix IN (${list})`))
+          .toArray().forEach(r => { const j = r.toJSON(); censusB[j.prefix] = { ...j, _ver: 'v6' }; });
+      }
+    } catch (e) { console.error('Domain compare census query failed:', e); }
+    setStatus('');
+
+    const classifyA  = ips => domainClassifyIPs(ips, ip2prefix, censusA);
+    const classifyB  = ips => domainClassifyIPs(ips, ip2prefix, censusB);
+    const badge2     = (clsA, clsB) =>
+      `${domainClassifyBadge(clsA)}<span class="domain-cmp-sep">\u2192</span>${domainClassifyBadge(clsB)}`;
+    const ipTableRow = ip => {
+      const prefix = ip2prefix[ip];
+      return `<tr class="pl-row cmp-click" data-prefix="${escHtml(prefix || ip)}">
+        <td class="domain-ip">${escHtml(ip)}</td>
+        <td class="domain-prefix">${prefix ? escHtml(prefix) : '—'}</td>
+        ${domainStatusCell(prefix, censusA)}
+        ${domainStatusCell(prefix, censusB)}
+      </tr>`;
+    };
+    const ipTable = (ips4, ips6) => {
+      const rows = [...ips4, ...ips6].map(ipTableRow);
+      return rows.length ? `<table class="domain-table">
+        <thead><tr><th>IP address</th><th>Prefix</th><th>${escHtml(dateA)}</th><th>${escHtml(dateB)}</th></tr></thead>
+        <tbody>${rows.join('')}</tbody></table>` : '<p class="loc-note">Could not resolve.</p>';
+    };
+    const section = (title, body, allIPs) =>
+      `<div class="domain-section"><div class="domain-rec-type">${title}${badge2(classifyA(allIPs), classifyB(allIPs))}</div>${body}</div>`;
+
+    let html = `<div class="card">
+      <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain compare</span></div>
+      <p class="loc-note">Census: ${escHtml(dateA)} vs ${escHtml(dateB)} &nbsp;&middot;&nbsp; Resolved via Google Public DNS<br>
+      <span style="font-size:0.75em;color:#d29922">&#9432; DNS records reflect today&rsquo;s resolution and may differ from the selected census dates.</span><br>
+      <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
+
+    if (aRecs.length) {
+      const ips = aRecs.map(r => r.data);
+      html += section('A records', ipTable(ips, []), ips);
+    }
+    if (aaaaRecs.length) {
+      const ips = aaaaRecs.map(r => r.data);
+      html += section('AAAA records', ipTable([], ips), ips);
+    }
+    if (nsResolved.length) {
+      const allNsIPs = nsResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+      html += `<div class="domain-section"><div class="domain-rec-type">NS records${badge2(classifyA(allNsIPs), classifyB(allNsIPs))}</div>`;
+      nsResolved.forEach(({ host, ips4, ips6 }) => {
+        const hostIPs = [...ips4, ...ips6];
+        html += `<div class="domain-host-label">${escHtml(host)}${hostIPs.length ? badge2(classifyA(hostIPs), classifyB(hostIPs)) : ''}</div>${ipTable(ips4, ips6)}`;
+      });
+      html += `</div>`;
+    }
+    if (mxResolved.length) {
+      const allMxIPs = mxResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+      html += `<div class="domain-section"><div class="domain-rec-type">MX records${badge2(classifyA(allMxIPs), classifyB(allMxIPs))}</div>`;
+      const mxByHost = Object.fromEntries(mxResolved.map(r => [r.host, r]));
+      const seen = new Set();
+      for (const { priority, host } of [...mxEntries].sort((a, b) => a.priority - b.priority)) {
+        if (seen.has(host)) continue; seen.add(host);
+        const { ips4, ips6 } = mxByHost[host] || { ips4: [], ips6: [] };
+        const hostIPs = [...ips4, ...ips6];
+        html += `<div class="domain-host-label">${escHtml(host)} <span class="stat-note">(priority ${priority})</span>${hostIPs.length ? badge2(classifyA(hostIPs), classifyB(hostIPs)) : ''}</div>${ipTable(ips4, ips6)}`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+    currentCompareCtx = { dateA, dateB };
+    resultsEl.innerHTML = html;
+  } catch (err) {
+    setStatus('');
+    console.error('compareDomain error:', err);
+    resultsEl.innerHTML = `<div class="not-found">Error: ${escHtml(err.message ?? String(err))}</div>`;
   }
 }
 
@@ -1272,35 +1379,92 @@ inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter') lookup(inputEl.value);
 });
 
-// Toggle date input enabled state with radio buttons
-document.querySelectorAll('input[name="when"]').forEach(radio => {
-  radio.addEventListener('change', () => {
-    dateInput.disabled = whenLatest.checked;
-    if (!whenLatest.checked) {
-      dateInput.focus();
-    } else if (!resultsEl.innerHTML) {
-      // Switched to "Latest" on home page — refresh stats and clear date from URL
-      history.replaceState(null, '', '.');
-      refreshHomeStats('latest');
-    }
-  });
+// ── Date picker UI ───────────────────────────────────────────────────────────
+const btnLatest        = document.getElementById('btn-latest');
+const btnPickDate      = document.getElementById('btn-pick-date');
+const btnPrevDay       = document.getElementById('btn-prev-day');
+const btnNextDay       = document.getElementById('btn-next-day');
+const dateNavGroup     = document.getElementById('date-nav-group');
+const dateLabelDisplay = document.getElementById('date-label-display');
+
+// Sync visual state to a date string ('YYYY-MM-DD') or null for Latest
+function syncDateUI(date) {
+  if (date) {
+    dateLabelDisplay.textContent = date;
+    dateNavGroup.style.display   = 'flex';
+    btnLatest.classList.remove('date-mode-active');
+    btnPrevDay.disabled = !!dateInput.min && date <= dateInput.min;
+    btnNextDay.disabled = !!dateInput.max && date >= dateInput.max;
+  } else {
+    dateNavGroup.style.display = 'none';
+    btnLatest.classList.add('date-mode-active');
+  }
+}
+
+// Apply a specific date: update state, sync UI, and refresh/re-run as needed
+function applyDate(date) {
+  whenDate.checked   = true;
+  whenLatest.checked = false;
+  dateInput.value    = date;
+  syncDateUI(date);
+  if (resultsEl.innerHTML && inputEl.value) {
+    // Re-run current search on the new date (navigate day-by-day through results)
+    lookup(inputEl.value);
+  } else {
+    history.replaceState(null, '', '?date=' + date);
+    refreshHomeStats(date.replace(/-/g, '/'));
+  }
+}
+
+btnLatest.addEventListener('click', () => {
+  whenLatest.checked = true;
+  whenDate.checked   = false;
+  dateInput.value    = '';
+  syncDateUI(null);
+  if (!resultsEl.innerHTML) {
+    history.replaceState(null, '', '.');
+    refreshHomeStats('latest');
+  }
 });
 
-// Clicking the date input automatically switches to the "date" radio
-dateInput.addEventListener('focus', () => { whenDate.checked = true; dateInput.disabled = false; });
+btnPickDate.addEventListener('click', () => {
+  try { dateInput.showPicker(); } catch { dateInput.click(); }
+});
 
-// When a date is picked or typed on the home page, refresh stats and encode in URL
-// Use 'input' so keyboard-typed dates update immediately once all segments are filled
-// (dateInput.value is only non-empty when a complete valid date is present)
-function onDateChange() {
-  if (!dateInput.value || resultsEl.innerHTML) return;
-  whenDate.checked = true;
-  const viewKey = dateInput.value.replace(/-/g, '/');
-  history.replaceState(null, '', '?date=' + dateInput.value);
-  refreshHomeStats(viewKey);
+dateInput.addEventListener('change', () => {
+  if (dateInput.value) applyDate(dateInput.value);
+});
+
+btnPrevDay.addEventListener('click', () => {
+  if (!dateInput.value) return;
+  const d = new Date(dateInput.value + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 1);
+  const s = d.toISOString().slice(0, 10);
+  if (!dateInput.min || s >= dateInput.min) applyDate(s);
+});
+
+btnNextDay.addEventListener('click', () => {
+  if (!dateInput.value) return;
+  const d = new Date(dateInput.value + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + 1);
+  const s = d.toISOString().slice(0, 10);
+  if (!dateInput.max || s <= dateInput.max) applyDate(s);
+});
+
+// ── Compare date picker buttons ──────────────────────────────────────────────
+function syncCmpBtn(btn, input) {
+  if (input.value) {
+    btn.textContent = input.value;
+    btn.classList.add('date-mode-active');
+  } else {
+    btn.textContent = 'Pick date';
+    btn.classList.remove('date-mode-active');
+  }
 }
-dateInput.addEventListener('change', onDateChange);
-dateInput.addEventListener('input',  onDateChange);
+btnCmpA.addEventListener('click', () => { try { cmpDateA.showPicker(); } catch { cmpDateA.click(); } });
+btnCmpB.addEventListener('click', () => { try { cmpDateB.showPicker(); } catch { cmpDateB.click(); } });
+cmpDateA.addEventListener('change', () => syncCmpBtn(btnCmpA, cmpDateA));
+cmpDateB.addEventListener('change', () => syncCmpBtn(btnCmpB, cmpDateB));
 
 // ── Compare mode toggle ─────────────────────────────────────────────────────
 modeLookup.addEventListener('click', () => {
@@ -1407,8 +1571,15 @@ async function runCompare({ updateUrl = true } = {}) {
   }
 
   if (query) {
-    // Prefix-level compare — no global stats
-    await comparePrefixDetail(query, dateA, dateB);
+    // Domain compare — resolve DNS then check both census dates
+    const isDomain = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z]{2,63}$/.test(query) &&
+      !query.includes(':') && !query.includes('/');
+    const isTLD = /^\.[a-zA-Z]{2,63}$/.test(query);
+    if (isDomain || isTLD) {
+      await compareDomain(isTLD ? query.slice(1) : query, dateA, dateB);
+    } else {
+      await comparePrefixDetail(query, dateA, dateB);
+    }
   } else {
     // Full census compare — fire global stats in parallel
     try { initShowcaseCompare(dateA, dateB); } catch (_) {}
@@ -2082,6 +2253,7 @@ async function initASTableCompare(dateA, dateB) {
 
 function initShowcase(viewKey = 'latest') {
   if (!chartData) return;
+  if (resultsEl.innerHTML) return;
   const showcaseEl = document.getElementById('showcase-section');
   if (!showcaseEl) return;
 
@@ -2149,8 +2321,10 @@ async function initChart() {
     const res = await fetch(baseUrl + `stats-history.json`, { cache: 'no-cache' });
     if (!res.ok) return;
     chartData = await res.json();
-    try { initShowcase(selectedViewKey()); } catch (_) {}
-    document.getElementById('chart-section').style.display = '';
+    if (!resultsEl.innerHTML) {
+      try { initShowcase(selectedViewKey()); } catch (_) {}
+      document.getElementById('chart-section').style.display = '';
+    }
     buildLegend();
     drawChart();
     setupChartEvents();
