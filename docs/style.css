@@ -476,6 +476,34 @@ a.tag-link:hover { background: #2d333b; color: #58a6ff; }
 
 .chart-legend { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.75rem; }
 
+.chart-range-btns {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.chart-range-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  color: #8b949e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.chart-range-btn.active        { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+.chart-range-btn:hover:not(.active) { border-color: #8b949e; color: #e6edf3; }
+
+.chart-hint {
+  color: #484f58;
+  font-size: 0.68rem;
+  margin: 0.3rem 0 0;
+  text-align: right;
+}
+
 .legend-item {
   display: inline-flex;
   align-items: center;

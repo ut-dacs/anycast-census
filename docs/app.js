@@ -1635,6 +1635,10 @@ const CHART_SERIES = {
 let chartVer      = 'v4';
 let chartHidden   = new Set();
 let chartHoverIdx = null;
+let chartZoomStart   = 0;   // first visible date index
+let chartZoomEnd     = -1;  // last visible date index (-1 = latest)
+let chartDragStartX  = null;
+let chartDragCurrentX = null;
 
 async function refreshHomeStats(viewKey = 'latest') {
   asStatsReady = false;
@@ -1997,17 +2001,25 @@ function drawChart() {
   const dates  = chartData.dates;
   const n      = dates.length;
 
-  // Max of visible series
+  // Visible range
+  const vStart = Math.max(0, chartZoomStart);
+  const vEnd   = chartZoomEnd < 0 ? n - 1 : Math.min(chartZoomEnd, n - 1);
+  const nVis   = vEnd - vStart + 1;
+
+  // Max of visible series within visible range
   let maxVal = 0;
   for (const s of series) {
     if (chartHidden.has(s.key)) continue;
-    for (const v of chartData[s.key]) if (v != null && v > maxVal) maxVal = v;
+    for (let i = vStart; i <= vEnd; i++) {
+      const v = chartData[s.key][i];
+      if (v != null && v > maxVal) maxVal = v;
+    }
   }
 
   const yTicks = niceYTicks(maxVal, 5);
   const yMax   = yTicks.length ? yTicks[yTicks.length - 1] : 1;
 
-  const xPos = i => PAD.left + (n > 1 ? (i / (n - 1)) * plotW : plotW / 2);
+  const xPos = i => PAD.left + (nVis > 1 ? ((i - vStart) / (nVis - 1)) * plotW : plotW / 2);
   const yPos = v => PAD.top  + plotH * (1 - v / yMax);
 
   ctx.clearRect(0, 0, W, H);
@@ -2025,10 +2037,10 @@ function drawChart() {
   }
 
   // X axis ticks + labels (~every 120 px)
-  const xStep = Math.max(1, Math.round(120 / (plotW / n)));
+  const xStep = Math.max(1, Math.round(120 / (plotW / nVis)));
   ctx.fillStyle = '#8b949e';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (let i = 0; i < n; i += xStep) {
+  for (let i = vStart; i <= vEnd; i += xStep) {
     const x = xPos(i);
     ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, PAD.top + plotH); ctx.lineTo(x, PAD.top + plotH + 4); ctx.stroke();
@@ -2044,7 +2056,7 @@ function drawChart() {
     ctx.lineJoin = 'round';
     ctx.beginPath();
     let moved = false;
-    for (let i = 0; i < n; i++) {
+    for (let i = vStart; i <= vEnd; i++) {
       if (vals[i] == null) { moved = false; continue; }
       if (!moved) { ctx.moveTo(xPos(i), yPos(vals[i])); moved = true; }
       else          ctx.lineTo(xPos(i), yPos(vals[i]));
@@ -2052,8 +2064,24 @@ function drawChart() {
     ctx.stroke();
   }
 
-  // Hover crosshair + tooltip
-  if (chartHoverIdx != null) {
+  // Drag-select range overlay
+  if (chartDragStartX !== null && chartDragCurrentX !== null) {
+    const rx0 = PAD.left + Math.max(0, Math.min(plotW, Math.min(chartDragStartX, chartDragCurrentX)));
+    const rx1 = PAD.left + Math.max(0, Math.min(plotW, Math.max(chartDragStartX, chartDragCurrentX)));
+    if (rx1 - rx0 > 2) {
+      ctx.fillStyle = 'rgba(31,111,235,0.12)';
+      ctx.fillRect(rx0, PAD.top, rx1 - rx0, plotH);
+      ctx.strokeStyle = 'rgba(88,166,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rx0, PAD.top); ctx.lineTo(rx0, PAD.top + plotH);
+      ctx.moveTo(rx1, PAD.top); ctx.lineTo(rx1, PAD.top + plotH);
+      ctx.stroke();
+    }
+  }
+
+  // Hover crosshair + tooltip (only if within visible range)
+  if (chartHoverIdx != null && chartHoverIdx >= vStart && chartHoverIdx <= vEnd) {
     const hi = chartHoverIdx;
     const x  = xPos(hi);
 
@@ -2123,16 +2151,127 @@ function setupChartEvents() {
   const n       = chartData.dates.length;
   const PL = 58, PR = 14;
 
+  // Helper: current visible range
+  const visRange = () => ({
+    s: Math.max(0, chartZoomStart),
+    e: chartZoomEnd < 0 ? n - 1 : Math.min(chartZoomEnd, n - 1),
+  });
+
+  // ── Hover ──────────────────────────────────────────────────────────────────
   canvas.addEventListener('mousemove', e => {
+    if (chartDragStartX !== null) return; // handled by drag logic
     const rect  = canvas.getBoundingClientRect();
     const relX  = e.clientX - rect.left - PL;
     const plotW = rect.width - PL - PR;
-    chartHoverIdx = Math.max(0, Math.min(n - 1, Math.round((relX / plotW) * (n - 1))));
+    const { s, e: ve } = visRange();
+    const nVis = ve - s + 1;
+    chartHoverIdx = s + Math.max(0, Math.min(nVis - 1, Math.round((relX / plotW) * (nVis - 1))));
     drawChart();
   });
 
-  canvas.addEventListener('mouseleave', () => { chartHoverIdx = null; drawChart(); });
+  canvas.addEventListener('mouseleave', () => {
+    if (chartDragStartX !== null) return;
+    chartHoverIdx = null;
+    drawChart();
+  });
 
+  // ── Scroll-to-zoom ─────────────────────────────────────────────────────────
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect  = canvas.getBoundingClientRect();
+    const relX  = e.clientX - rect.left - PL;
+    const plotW = rect.width - PL - PR;
+    const frac  = Math.max(0, Math.min(1, relX / plotW));
+    const { s, e: ve } = visRange();
+    const nVis  = ve - s + 1;
+    const factor = e.deltaY > 0 ? 1.25 : 0.8; // scroll down = zoom out
+    const newVis = Math.min(n, Math.max(7, Math.round(nVis * factor)));
+    const pivot  = s + Math.round(frac * (nVis - 1));
+    let ns = Math.round(pivot - frac * (newVis - 1));
+    let ne = ns + newVis - 1;
+    if (ns < 0)     { ns = 0; ne = Math.min(n - 1, newVis - 1); }
+    if (ne > n - 1) { ne = n - 1; ns = Math.max(0, n - newVis); }
+    chartZoomStart = ns; chartZoomEnd = ne;
+    clearRangeBtnActive();
+    drawChart();
+  }, { passive: false });
+
+  // ── Drag-to-select-range ───────────────────────────────────────────────────
+  let isDragging = false;
+
+  canvas.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const relX = e.clientX - rect.left - PL;
+    if (relX < 0 || relX > rect.width - PL - PR) return;
+    chartDragStartX   = relX;
+    chartDragCurrentX = relX;
+    isDragging        = false;
+    chartHoverIdx     = null;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (chartDragStartX === null) return;
+    const rect  = canvas.getBoundingClientRect();
+    const relX  = e.clientX - rect.left - PL;
+    chartDragCurrentX = relX;
+    if (Math.abs(chartDragCurrentX - chartDragStartX) > 3) isDragging = true;
+    drawChart();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (chartDragStartX === null) return;
+    if (isDragging && Math.abs(chartDragCurrentX - chartDragStartX) > 10) {
+      const rect  = canvas.getBoundingClientRect();
+      const plotW = rect.width - PL - PR;
+      const { s, e: ve } = visRange();
+      const nVis  = ve - s + 1;
+      const x0    = Math.max(0, Math.min(chartDragStartX,   chartDragCurrentX));
+      const x1    = Math.max(0, Math.min(Math.max(chartDragStartX, chartDragCurrentX), plotW));
+      const i0    = s + Math.round((x0 / plotW) * (nVis - 1));
+      const i1    = s + Math.round((x1 / plotW) * (nVis - 1));
+      if (i1 > i0 + 1) {
+        chartZoomStart = Math.max(0, i0);
+        chartZoomEnd   = Math.min(n - 1, i1);
+        clearRangeBtnActive();
+      }
+    }
+    chartDragStartX = null; chartDragCurrentX = null; isDragging = false;
+    drawChart();
+  });
+
+  // Prevent text selection on drag
+  canvas.addEventListener('selectstart', e => e.preventDefault());
+
+  // ── Double-click to reset zoom ─────────────────────────────────────────────
+  canvas.addEventListener('dblclick', () => {
+    chartZoomStart = 0; chartZoomEnd = -1;
+    document.querySelectorAll('.chart-range-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.range === '0'));
+    drawChart();
+  });
+
+  // ── Preset range buttons ───────────────────────────────────────────────────
+  document.getElementById('chart-range-btns').addEventListener('click', e => {
+    const btn = e.target.closest('.chart-range-btn');
+    if (!btn) return;
+    const days = parseInt(btn.dataset.range);
+    if (days === 0) {
+      chartZoomStart = 0; chartZoomEnd = -1;
+    } else {
+      const latest = new Date(chartData.dates[n - 1]);
+      latest.setDate(latest.getDate() - days);
+      const cutStr = latest.toISOString().slice(0, 10);
+      const idx = chartData.dates.findIndex(d => d >= cutStr);
+      chartZoomStart = idx < 0 ? 0 : idx;
+      chartZoomEnd   = -1;
+    }
+    document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    drawChart();
+  });
+
+  // ── Tab (IPv4/IPv6) ────────────────────────────────────────────────────────
   tabBtns.forEach(btn => btn.addEventListener('click', () => {
     chartVer = btn.dataset.ver;
     chartHidden.clear();
@@ -2141,6 +2280,7 @@ function setupChartEvents() {
     drawChart();
   }));
 
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
   document.getElementById('chart-fs-btn').addEventListener('click', () => {
     const section = document.getElementById('chart-section');
     if (!document.fullscreenElement) section.requestFullscreen();
@@ -2149,11 +2289,7 @@ function setupChartEvents() {
 
   document.addEventListener('fullscreenchange', () => {
     const canvas = document.getElementById('chart-canvas');
-    if (document.fullscreenElement) {
-      canvas.style.height = '0';
-    } else {
-      canvas.style.height = '260px';
-    }
+    canvas.style.height = document.fullscreenElement ? '0' : '260px';
     setTimeout(drawChart, 50);
   });
 
@@ -2162,6 +2298,10 @@ function setupChartEvents() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(drawChart, 100);
   });
+}
+
+function clearRangeBtnActive() {
+  document.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
 }
 
 initChart();
