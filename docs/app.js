@@ -302,6 +302,19 @@ async function lookup(raw, { updateUrl = true } = {}) {
   const asnMatch = input.match(/^(?:AS)?(\d{1,10})$/i);
   if (asnMatch) { await lookupASN(asnMatch[1], viewKey, dateLabel); return; }
 
+  // TLD: ".nl" or ".com" (leading dot)
+  if (/^\.[a-zA-Z]{2,63}$/.test(input)) {
+    await lookupDomain(input.slice(1), viewKey, dateLabel);
+    return;
+  }
+
+  // Domain name (e.g., google.com, ns1.example.org) or bare TLD (e.g., "nl", "com")
+  if (/^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z]{2,63}$/.test(input) &&
+      !input.includes(':') && !input.includes('/')) {
+    await lookupDomain(input, viewKey, dateLabel);
+    return;
+  }
+
   // Bogon / reserved address detection
   const bareIPv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(input);
   const isIPv6Input = input.includes(':');
@@ -350,6 +363,186 @@ async function lookup(raw, { updateUrl = true } = {}) {
 
   // Default: exact /24 or /48 prefix
   await lookupPrefix(input, viewKey, dateLabel);
+}
+
+// ── Domain lookup via Google DoH ─────────────────────────────────────────
+async function dohQuery(name, type) {
+  const typeNum = { A: 1, AAAA: 28, MX: 15, NS: 2 }[type];
+  try {
+    const res = await fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
+      { headers: { Accept: 'application/dns-json' } }
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (json.Status !== 0 || !Array.isArray(json.Answer)) return [];
+    return json.Answer.filter(r => r.type === typeNum);
+  } catch { return []; }
+}
+
+async function lookupDomain(domain, viewKey, dateLabel) {
+  try {
+  setStatus(`Resolving ${escHtml(domain)}\u2026`);
+
+  // Resolve A, AAAA, MX, NS in parallel
+  const [aRecs, aaaaRecs, mxRecs, nsRecs] = await Promise.all([
+    dohQuery(domain, 'A'), dohQuery(domain, 'AAAA'),
+    dohQuery(domain, 'MX'), dohQuery(domain, 'NS'),
+  ]);
+
+  if (!aRecs.length && !aaaaRecs.length && !mxRecs.length && !nsRecs.length) {
+    setStatus('');
+    resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
+    return;
+  }
+
+  // Parse NS / MX hostnames
+  const nsHosts = [...new Set(nsRecs.map(r => (r.data || '').replace(/\.$/, '')).filter(Boolean))];
+  const mxEntries = mxRecs.map(r => {
+    const p = (r.data || '').split(' ');
+    return { priority: parseInt(p[0]) || 0, host: (p[1] || '').replace(/\.$/, '') };
+  }).filter(e => e.host);
+  const mxHosts = [...new Set(mxEntries.map(e => e.host))];
+
+  // Resolve NS / MX hosts to IPs
+  setStatus('Resolving nameservers and mail servers\u2026');
+  const resolveHost = async host => {
+    const [a, aaaa] = await Promise.all([dohQuery(host, 'A'), dohQuery(host, 'AAAA')]);
+    return { host, ips4: a.map(r => r.data).filter(Boolean), ips6: aaaa.map(r => r.data).filter(Boolean) };
+  };
+  const [nsResolved, mxResolved] = await Promise.all([
+    Promise.all(nsHosts.map(resolveHost)),
+    Promise.all(mxHosts.map(resolveHost)),
+  ]);
+
+  // Collect all prefixes
+  const p4Set = new Set(), p6Set = new Set(), ip2prefix = {};
+  const addIP4 = ip => {
+    const m = /^(\d+)\.(\d+)\.(\d+)\./.exec(ip);
+    if (!m) return;
+    const p = `${m[1]}.${m[2]}.${m[3]}.0/24`; p4Set.add(p); ip2prefix[ip] = p;
+  };
+  const addIP6 = ip => {
+    try { const p = ipv6ToSlash48(ip); p6Set.add(p); ip2prefix[ip] = p; } catch {}
+  };
+  aRecs.forEach(r => addIP4(r.data || ''));
+  aaaaRecs.forEach(r => addIP6(r.data || ''));
+  [...nsResolved, ...mxResolved].forEach(({ ips4, ips6 }) => { ips4.forEach(addIP4); ips6.forEach(addIP6); });
+
+  // Batch census query
+  setStatus(`Checking ${p4Set.size + p6Set.size} prefixes in census\u2026`);
+  // censusMap: prefix → { row data, _ver: 'v4'|'v6' }
+  const censusMap = {};
+  try {
+    await registerViews(viewKey);
+    if (p4Set.size) {
+      const list = [...p4Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+      (await conn.query(`SELECT * FROM ipv4 WHERE prefix IN (${list})`))
+        .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v4' }; });
+    }
+    if (p6Set.size) {
+      const list = [...p6Set].map(p => `'${p.replace(/'/g, "''")}'`).join(',');
+      (await conn.query(`SELECT * FROM ipv6 WHERE prefix IN (${list})`))
+        .toArray().forEach(r => { const j = r.toJSON(); censusMap[j.prefix] = { ...j, _ver: 'v6' }; });
+    }
+  } catch (e) { console.error('Domain census query failed:', e); }
+
+  setStatus('');
+
+  // Helpers
+  const n = v => Number(v) || 0; // safely coerce BigInt or undefined to number
+  const confOf = row => {
+    if (!row) return null;
+    if (row._ver === 'v4') {
+      if (Math.max(n(row.GCD_ICMPv4), n(row.GCD_TCPv4)) > 1) return 'high';
+      if (Math.max(n(row.AB_ICMPv4), n(row.AB_TCPv4), n(row.AB_DNSv4)) > 2) return 'medium';
+      return 'low';
+    } else {
+      if (Math.max(n(row.GCD_ICMPv6), n(row.GCD_TCPv6)) > 1) return 'high';
+      if (Math.max(n(row.AB_ICMPv6), n(row.AB_TCPv6), n(row.AB_DNSv6)) > 2) return 'medium';
+      return 'low';
+    }
+  };
+  const statusCell = prefix => {
+    const row = prefix ? censusMap[prefix] : null;
+    if (!row) return `<td class="domain-status domain-not-anycast">not in census</td>`;
+    const conf = confOf(row);
+    return `<td class="domain-status domain-anycast domain-anycast-${conf}">anycast &middot; ${conf}</td>`;
+  };
+  const ipTableRow = ip => {
+    const prefix = ip2prefix[ip];
+    return `<tr class="pl-row" data-prefix="${escHtml(prefix || ip)}">
+      <td class="domain-ip">${escHtml(ip)}</td>
+      <td class="domain-prefix">${prefix ? escHtml(prefix) : '—'}</td>
+      ${statusCell(prefix)}
+    </tr>`;
+  };
+  const ipTable = (ips4, ips6) => {
+    const rows = [...ips4.map(ipTableRow), ...ips6.map(ipTableRow)];
+    return rows.length ? `<table class="domain-table">
+      <thead><tr><th>IP address</th><th>Prefix</th><th>Anycast</th></tr></thead>
+      <tbody>${rows.join('')}</tbody></table>` : '<p class="loc-note">Could not resolve.</p>';
+  };
+
+  // Classify a set of IPs: 'anycast'|'mixed'|'unicast' or null if empty
+  const classifyIPs = ips => {
+    if (!ips.length) return null;
+    const found = ips.filter(ip => ip2prefix[ip] && censusMap[ip2prefix[ip]]).length;
+    if (found === 0) return 'unicast';
+    if (found === ips.length) return 'anycast';
+    return 'mixed';
+  };
+  const classifyBadge = cls =>
+    cls ? ` <span class="domain-classify domain-classify-${cls}">${cls}</span>` : '';
+
+  let html = `<div class="card">
+    <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain</span></div>
+    <p class="loc-note">Resolved via Google Public DNS &nbsp;&middot;&nbsp; Census: ${escHtml(dateLabel)}<br>
+    <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
+
+  const section = (title, body, cls) =>
+    `<div class="domain-section"><div class="domain-rec-type">${title}${classifyBadge(cls)}</div>${body}</div>`;
+
+  if (aRecs.length) {
+    const ips = aRecs.map(r => r.data);
+    html += section('A records', ipTable(ips, []), classifyIPs(ips));
+  }
+  if (aaaaRecs.length) {
+    const ips = aaaaRecs.map(r => r.data);
+    html += section('AAAA records', ipTable([], ips), classifyIPs(ips));
+  }
+  if (nsResolved.length) {
+    const allNsIPs = nsResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+    html += `<div class="domain-section"><div class="domain-rec-type">NS records${classifyBadge(classifyIPs(allNsIPs))}</div>`;
+    nsResolved.forEach(({ host, ips4, ips6 }) => {
+      const hostIPs = [...ips4, ...ips6];
+      const badge = hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : '';
+      html += `<div class="domain-host-label">${escHtml(host)}${badge}</div>${ipTable(ips4, ips6)}`;
+    });
+    html += `</div>`;
+  }
+  if (mxResolved.length) {
+    const allMxIPs = mxResolved.flatMap(({ ips4, ips6 }) => [...ips4, ...ips6]);
+    html += `<div class="domain-section"><div class="domain-rec-type">MX records${classifyBadge(classifyIPs(allMxIPs))}</div>`;
+    const mxByHost = Object.fromEntries(mxResolved.map(r => [r.host, r]));
+    const seen = new Set();
+    for (const { priority, host } of [...mxEntries].sort((a, b) => a.priority - b.priority)) {
+      if (seen.has(host)) continue; seen.add(host);
+      const { ips4, ips6 } = mxByHost[host] || { ips4: [], ips6: [] };
+      const hostIPs = [...ips4, ...ips6];
+      const badge = hostIPs.length ? classifyBadge(classifyIPs(hostIPs)) : '';
+      html += `<div class="domain-host-label">${escHtml(host)} <span class="stat-note">(priority ${priority})</span>${badge}</div>${ipTable(ips4, ips6)}`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  resultsEl.innerHTML = html;
+  } catch (err) {
+    setStatus('');
+    console.error('lookupDomain error:', err);
+    resultsEl.innerHTML = `<div class="not-found">Error resolving domain: ${escHtml(err.message ?? String(err))}</div>`;
+  }
 }
 
 async function lookupPrefix(prefix, viewKey, dateLabel) {

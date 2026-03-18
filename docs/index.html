@@ -16,11 +16,11 @@
     </div>
     <p class="subtitle">
       Query the latest <a href="https://github.com/ut-dacs/anycast-census" target="_blank">LACeS anycast census</a> data.
-      Search by IP, prefix, or ASN.
+      Search by IP, prefix, ASN, domain, or TLD.
     </p>
 
     <div class="search-row">
-      <input type="text" id="prefix-input" placeholder="1.1.1.0/24 · 1.1.0.0/16 · AS13335 · 2606:4700::/48 · 8.8.8.8" spellcheck="false" autocomplete="off">
+      <input type="text" id="prefix-input" placeholder="1.1.1.0/24 · AS13335 · 8.8.8.8 · google.com · .nl" spellcheck="false" autocomplete="off">
       <button id="search-btn" disabled>Look up</button>
     </div>
 
@@ -53,7 +53,9 @@
       <span data-prefix="1.1.0.0/16">1.1.0.0/16</span> &nbsp;·&nbsp;
       <span data-prefix="AS13335">AS13335</span> &nbsp;·&nbsp;
       <span data-prefix="2606:4700::/48">2606:4700::/48</span> &nbsp;·&nbsp;
-      <span data-prefix="8.8.8.8">8.8.8.8</span>
+      <span data-prefix="8.8.8.8">8.8.8.8</span> &nbsp;·&nbsp;
+      <span data-prefix="google.com">google.com</span> &nbsp;·&nbsp;
+      <span data-prefix=".edu">.edu</span>
     </div>
 
     <div class="status" id="status">Loading query engine…</div>
