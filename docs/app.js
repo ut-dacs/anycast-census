@@ -123,7 +123,8 @@ function getIPv6BogonInfo(ip) {
 // Initialise DuckDB
 let db, conn;
 let currentViewKey = null; // tracks which parquet files are registered as views
-let leafletMap = null;
+let leafletMap  = null;
+let locMarkers  = []; // circleMarker|null per locations[i]
 let asStatsReady  = false;
 let asTableReady  = false;
 let chartData     = null;
@@ -1091,8 +1092,8 @@ function renderResult(row, isIPv6, locations, dateLabel) {
       <p class="loc-note">Lower bound — actual number of PoPs may be higher.</p>
       <div id="loc-map"></div>
       <div class="loc-grid">
-        ${locations.map(loc => `
-          <div class="loc-card">
+        ${locations.map((loc, i) => `
+          <div class="loc-card" data-loc-idx="${i}">
             <div class="loc-iata">${escHtml(loc.id ?? '?')}</div>
             <div class="loc-city">${escHtml(loc.city ?? '')}${loc.country_code ? `, ${escHtml(loc.country_code)}` : ''}</div>
             <div class="loc-coords">${fmtCoord(loc.lat)}, ${fmtCoord(loc.lon)}</div>
@@ -1149,12 +1150,11 @@ function initMap(locations) {
     setTimeout(() => leafletMap && leafletMap.invalidateSize(), 50);
   });
 
-  const validLocs = locations.filter(l => l.lat != null && l.lon != null);
-  const markers = validLocs.map(loc => {
+  locMarkers = locations.map(loc => {
+    if (loc.lat == null || loc.lon == null) return null;
     const label = (!loc.city || loc.id === 'NoCity')
       ? `Unknown (${fmtCoord(loc.lat)}, ${fmtCoord(loc.lon)})`
       : `${loc.city}, ${loc.country_code} — ${loc.id}`;
-
     return L.circleMarker([loc.lat, loc.lon], {
       radius: 6,
       fillColor: '#58a6ff',
@@ -1165,8 +1165,9 @@ function initMap(locations) {
     }).bindTooltip(label).addTo(leafletMap);
   });
 
-  if (markers.length) {
-    leafletMap.fitBounds(L.featureGroup(markers).getBounds().pad(0.15));
+  const validMarkers = locMarkers.filter(Boolean);
+  if (validMarkers.length) {
+    leafletMap.fitBounds(L.featureGroup(validMarkers).getBounds().pad(0.15));
   }
 }
 
@@ -1317,6 +1318,26 @@ resultsEl.addEventListener('click', e => {
       comparePrefixDetail(prefix, dateA, dateB);
     } else if (currentLookupCtx) {
       lookup(prefix);
+    }
+    return;
+  }
+
+  // ── Location card click — highlight marker on map ──
+  const locCard = e.target.closest('.loc-card[data-loc-idx]');
+  if (locCard) {
+    const idx    = parseInt(locCard.dataset.locIdx);
+    const marker = locMarkers[idx] ?? null;
+    const sel    = locCard.classList.toggle('selected');
+    if (marker) {
+      marker.setStyle(sel
+        ? { fillColor: '#ffa657', color: '#d18616', fillOpacity: 1, radius: 9, weight: 2 }
+        : { fillColor: '#58a6ff', color: '#1f6feb', fillOpacity: 0.85, radius: 6, weight: 1.5 });
+      if (sel) {
+        leafletMap?.panTo(marker.getLatLng(), { animate: true });
+        marker.openTooltip();
+      } else {
+        marker.closeTooltip();
+      }
     }
     return;
   }
