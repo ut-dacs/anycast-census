@@ -43,7 +43,7 @@
       <button id="btn-pick-date" class="date-mode-btn">&#x1F4C5; Pick date</button>
       <!-- Hidden date input — value store + showPicker() target -->
       <input type="date" id="date-input" min="2024-03-21"
-        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+        style="position:fixed;opacity:0;width:1px;height:1px;top:-200px;left:-200px">
       <!-- Hidden radios kept for JS compatibility (getViewKey reads them) -->
       <input type="radio" name="when" id="when-latest" value="latest" checked style="display:none">
       <input type="radio" name="when" id="when-date"   value="date"   style="display:none">
@@ -55,9 +55,9 @@
       <span>Date B:</span>
       <button id="btn-cmp-b" class="date-mode-btn">Pick date</button>
       <input type="date" id="cmp-date-a" min="2024-03-21"
-        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+        style="position:fixed;opacity:0;width:1px;height:1px;top:-200px;left:-200px">
       <input type="date" id="cmp-date-b" min="2024-03-21"
-        style="position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0">
+        style="position:fixed;opacity:0;width:1px;height:1px;top:-200px;left:-200px">
       <button id="cmp-btn" class="date-mode-btn">Compare</button>
     </div>
 
@@ -68,7 +68,8 @@
       <span data-prefix="2606:4700::/48">2606:4700::/48</span> &nbsp;·&nbsp;
       <span data-prefix="8.8.8.8">8.8.8.8</span> &nbsp;·&nbsp;
       <span data-prefix="google.com">google.com</span> &nbsp;·&nbsp;
-      <span data-prefix=".edu">.edu</span>
+      <span data-prefix=".edu">.edu</span> &nbsp;·&nbsp;
+      <span data-prefix="." title="Root zone — checks if root name servers are anycasted">.</span>
     </div>
 
     <div class="status" id="status">Loading query engine…</div>
@@ -76,6 +77,7 @@
 
     <div class="card" id="showcase-section" style="display:none;margin-bottom:1.5rem">
       <div class="card-title" id="showcase-title">Anycast prefix counts — latest</div>
+      <p id="showcase-date-note" class="stat-note" style="display:none;margin:0.25rem 0 0.75rem;color:#d29922"></p>
       <table class="as-stats-table">
         <thead>
           <tr><th>Detection method</th><th>IPv4</th><th>IPv6</th></tr>

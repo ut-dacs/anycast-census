@@ -23,6 +23,15 @@ const btnCmpA     = document.getElementById('btn-cmp-a');
 const btnCmpB     = document.getElementById('btn-cmp-b');
 let isCompareMode = false;
 
+// Date picker UI elements (declared here so syncDateUI() can reference them
+// even when called from inside the top-level await init block)
+const btnLatest        = document.getElementById('btn-latest');
+const btnPickDate      = document.getElementById('btn-pick-date');
+const btnPrevDay       = document.getElementById('btn-prev-day');
+const btnNextDay       = document.getElementById('btn-next-day');
+const dateNavGroup     = document.getElementById('date-nav-group');
+const dateLabelDisplay = document.getElementById('date-label-display');
+
 // ── Pagination state ────────────────────────────────────────────────────────
 const pgStore = {};
 let pgCounter = 0;
@@ -31,7 +40,8 @@ let currentCompareCtx = null;  // { dateA, dateB }
 
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
-  statusEl.className = 'status' + (isError ? ' error' : '');
+  statusEl.className = 'status' +
+    (isError ? ' error' : msg ? ' loading' : '');
 }
 
 // Base URL of the data files (same directory as this page)
@@ -283,7 +293,22 @@ function selectedViewKey() {
 // ── Lookup dispatcher ──────────────────────────────────────────────────────
 async function lookup(raw, { updateUrl = true } = {}) {
   const input = raw.trim();
-  if (!input) return;
+  if (!input) {
+    // Empty search — go back to home view
+    resultsEl.innerHTML = '';
+    resetPg();
+    currentLookupCtx  = null;
+    currentCompareCtx = null;
+    chartSection.style.display = chartData ? '' : 'none';
+    asStatsSectionEl.style.display = 'none';
+    asTableSectionEl.style.display = 'none';
+    document.getElementById('showcase-section').style.display = 'none';
+    setStatus('');
+    const vk = selectedViewKey();
+    if (updateUrl) history.replaceState(null, '', vk === 'latest' ? '.' : '?date=' + dateInput.value);
+    refreshHomeStats(vk);
+    return;
+  }
 
   const viewKey   = selectedViewKey();
   const dateLabel = viewKey === 'latest' ? 'latest' : viewKey.replace(/\//g, '-');
@@ -304,6 +329,12 @@ async function lookup(raw, { updateUrl = true } = {}) {
   // AS number: "AS13335" or bare "13335"
   const asnMatch = input.match(/^(?:AS)?(\d{1,10})$/i);
   if (asnMatch) { await lookupASN(asnMatch[1], viewKey, dateLabel); return; }
+
+  // Root zone: bare "."
+  if (input === '.') {
+    await lookupDomain('.', viewKey, dateLabel);
+    return;
+  }
 
   // TLD: ".nl" or ".com" (leading dot)
   if (/^\.[a-zA-Z]{2,63}$/.test(input)) {
@@ -362,6 +393,40 @@ async function lookup(raw, { updateUrl = true } = {}) {
       await lookupCIDRBlock(input, viewKey, dateLabel);
       return;
     }
+  }
+
+  // ── Input validation ────────────────────────────────────────────────────
+  // At this point the input must be a CIDR with len >= 24 (v4) or >= 48 (v6).
+  // If it doesn't look like one, reject it rather than returning a misleading
+  // "prefix not found" from the database.
+  const invalidQuery = (() => {
+    if (!lenMatch) return true;               // no slash at all
+    const ipPart = input.slice(0, input.lastIndexOf('/'));
+    const len    = parseInt(lenMatch[1]);
+    if (isIPv6Input) return len > 128;        // IPv6 CIDR: only length check (expandIPv6 will catch bad addresses later)
+    // IPv4 CIDR: validate each octet and length
+    const octets = ipPart.split('.');
+    if (octets.length !== 4) return true;
+    if (octets.some(o => !/^\d{1,3}$/.test(o) || +o > 255)) return true;
+    if (len > 32) return true;
+    return false;
+  })();
+  if (invalidQuery) {
+    setStatus('');
+    resultsEl.innerHTML = `<div class="not-found">
+      <strong>${escHtml(input)}</strong> is not a recognised query format.<br><br>
+      Supported inputs:
+      <ul style="margin:0.5rem 0 0 1.2rem;line-height:1.8">
+        <li>IP address — <code>8.8.8.8</code> or <code>2606:4700::1</code></li>
+        <li>CIDR prefix — <code>1.1.1.0/24</code> or <code>2606:4700::/48</code></li>
+        <li>Wider block — <code>1.1.0.0/16</code></li>
+        <li>AS number — <code>AS13335</code></li>
+        <li>Domain — <code>google.com</code></li>
+        <li>TLD — <code>.edu</code></li>
+        <li>Root zone — <code>.</code></li>
+      </ul>
+    </div>`;
+    return;
   }
 
   // Default: exact /24 or /48 prefix
@@ -461,12 +526,14 @@ function domainClassifyBadge(cls) {
 }
 
 async function lookupDomain(domain, viewKey, dateLabel) {
+  const displayName = domain === '.' ? 'Root zone (.)' : domain;
+  const kindLabel   = domain === '.' ? 'root zone' : !domain.includes('.') ? 'TLD' : 'domain';
   try {
-    setStatus(`Resolving ${escHtml(domain)}\u2026`);
+    setStatus(`Resolving ${escHtml(displayName)}\u2026`);
     const resolved = await resolveDomainPrefixes(domain);
     if (!resolved) {
       setStatus('');
-      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
+      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(displayName)}</strong>.</div>`;
       return;
     }
     const { aRecs, aaaaRecs, nsResolved, mxResolved, mxEntries, p4Set, p6Set, ip2prefix } = resolved;
@@ -509,7 +576,7 @@ async function lookupDomain(domain, viewKey, dateLabel) {
       `<div class="domain-section"><div class="domain-rec-type">${title}${classifyBadge(cls)}</div>${body}</div>`;
 
     let html = `<div class="card">
-      <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain</span></div>
+      <div class="card-title">${escHtml(displayName)} <span class="stat-note">— ${kindLabel}</span></div>
       <p class="loc-note">Census: ${escHtml(dateLabel)} &nbsp;&middot;&nbsp; Resolved via Google Public DNS<br>
       <span style="font-size:0.75em;color:#d29922">&#9432; DNS records reflect today&rsquo;s resolution and may differ from the selected census date.</span><br>
       <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
@@ -555,12 +622,14 @@ async function lookupDomain(domain, viewKey, dateLabel) {
 }
 
 async function compareDomain(domain, dateA, dateB) {
+  const displayName = domain === '.' ? 'Root zone (.)' : domain;
+  const kindLabel   = domain === '.' ? 'root zone' : !domain.includes('.') ? 'TLD' : 'domain';
   try {
-    setStatus(`Resolving ${escHtml(domain)}\u2026`);
+    setStatus(`Resolving ${escHtml(displayName)}\u2026`);
     const resolved = await resolveDomainPrefixes(domain);
     if (!resolved) {
       setStatus('');
-      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(domain)}</strong>.</div>`;
+      resultsEl.innerHTML = `<div class="not-found">No DNS records found for <strong>${escHtml(displayName)}</strong>.</div>`;
       return;
     }
     const { aRecs, aaaaRecs, nsResolved, mxResolved, mxEntries, p4Set, p6Set, ip2prefix } = resolved;
@@ -608,7 +677,7 @@ async function compareDomain(domain, dateA, dateB) {
       `<div class="domain-section"><div class="domain-rec-type">${title}${badge2(classifyA(allIPs), classifyB(allIPs))}</div>${body}</div>`;
 
     let html = `<div class="card">
-      <div class="card-title">${escHtml(domain)} <span class="stat-note">— domain compare</span></div>
+      <div class="card-title">${escHtml(displayName)} <span class="stat-note">— ${kindLabel} compare</span></div>
       <p class="loc-note">Census: ${escHtml(dateA)} vs ${escHtml(dateB)} &nbsp;&middot;&nbsp; Resolved via Google Public DNS<br>
       <span style="font-size:0.75em;color:#d29922">&#9432; DNS records reflect today&rsquo;s resolution and may differ from the selected census dates.</span><br>
       <span style="font-size:0.75em;color:#484f58">Click a row to look up the prefix in detail.</span></p>`;
@@ -869,23 +938,58 @@ function applyTableFilter(id, filterType, value) {
   wrap.querySelectorAll('.mbr-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mbr === (st.mbrFilter ?? 'all'));
   });
-  // Update count display
+  // Update "X shown" count
   const countEl = wrap.querySelector('.conf-filter-count');
   if (countEl) countEl.textContent = `${fmtN(st.rows.length)} shown`;
-  // Recompute confidence counts for the active ver + mbr filters
-  if (filterType === 'ver' || filterType === 'mbr') {
-    const filtered = st.allRows.filter(r =>
+
+  // Recompute confidence button counts (based on active ver + mbr, ignoring conf)
+  {
+    const base = st.allRows.filter(r =>
       (st.verFilter === 'all' || r.ver === st.verFilter) &&
       (!st.mbrFilter || st.mbrFilter === 'all' || r.membership === st.mbrFilter)
     );
     let cH = 0, cM = 0, cL = 0;
-    for (const r of filtered) {
+    for (const r of base) {
       if (r.conf === 'high') cH++; else if (r.conf === 'medium') cM++; else cL++;
     }
     wrap.querySelectorAll('.conf-filter-btn').forEach(btn => {
       if      (btn.dataset.conf === 'high')   btn.textContent = `High (${fmtN(cH)})`;
       else if (btn.dataset.conf === 'medium') btn.textContent = `Med (${fmtN(cM)})`;
       else if (btn.dataset.conf === 'low')    btn.textContent = `Low (${fmtN(cL)})`;
+    });
+  }
+
+  // Recompute protocol button counts (based on active conf + mbr, ignoring ver)
+  {
+    const base = st.allRows.filter(r =>
+      (st.confFilter === 'all' || r.conf === st.confFilter) &&
+      (!st.mbrFilter || st.mbrFilter === 'all' || r.membership === st.mbrFilter)
+    );
+    let nV4 = 0, nV6 = 0;
+    for (const r of base) { if (r.ver === 'v4') nV4++; else nV6++; }
+    wrap.querySelectorAll('.ver-filter-btn').forEach(btn => {
+      if      (btn.dataset.ver === 'all') btn.textContent = `All (${fmtN(base.length)})`;
+      else if (btn.dataset.ver === 'v4')  btn.textContent = `IPv4 (${fmtN(nV4)})`;
+      else if (btn.dataset.ver === 'v6')  btn.textContent = `IPv6 (${fmtN(nV6)})`;
+    });
+  }
+
+  // Recompute membership button counts (based on active ver + conf, ignoring mbr)
+  {
+    const base = st.allRows.filter(r =>
+      (st.verFilter === 'all' || r.ver === st.verFilter) &&
+      (st.confFilter === 'all' || r.conf === st.confFilter)
+    );
+    wrap.querySelectorAll('.mbr-filter-btn').forEach(btn => {
+      const mbr = btn.dataset.mbr;
+      if (!mbr) return;
+      const count = mbr === 'all' ? base.length : base.filter(r => r.membership === mbr).length;
+      // Preserve any inner HTML (cmp-dot spans) and only update the trailing text node
+      const lastNode = [...btn.childNodes].find(n => n.nodeType === Node.TEXT_NODE && n.textContent.includes('('));
+      if (lastNode) lastNode.textContent = lastNode.textContent.replace(/\(\d[\d,]*\)/, `(${fmtN(count)})`);
+      else btn.childNodes.length
+        ? (btn.lastChild.textContent = btn.lastChild.textContent.replace(/\(\d[\d,]*\)/, `(${fmtN(count)})`))
+        : (btn.textContent = btn.textContent.replace(/\(\d[\d,]*\)/, `(${fmtN(count)})`));
     });
   }
 }
@@ -948,11 +1052,11 @@ function renderPrefixList(rows, searchTerm, dateLabel) {
     return `
       <tr class="pl-row" data-prefix="${escHtml(row.prefix)}">
         <td><span class="ver-badge">${row.ver}</span></td>
-        <td><span class="prefix-link">${escHtml(row.prefix)}</span>${row.partial ? ' <span class="tag tag-warn" title="Partial anycast: this /24 contains both unicast and anycast addresses">partial</span>' : ''}</td>
+        <td><a class="prefix-link" href="?q=${encodeURIComponent(row.prefix)}">${escHtml(row.prefix)}</a>${row.partial ? ' <span class="tag tag-warn" title="Partial anycast: this /24 contains both unicast and anycast addresses">partial</span>' : ''}</td>
         <td><span class="confidence ${conf.cls}">${conf.label}</span></td>
         <td class="${ab_max  ? 'count' : 'count-zero'}">AB&nbsp;${fmtN(ab_max)}</td>
         <td class="${gcd_max ? 'count' : 'count-zero'}">GCD&nbsp;${fmtN(gcd_max)}</td>
-        <td>${asns.map(a => `<span class="tag">AS${escHtml(a)}</span>`).join(' ')}</td>
+        <td>${asns.map(a => `<a class="tag" href="?q=${encodeURIComponent('AS' + a)}">AS${escHtml(a)}</a>`).join(' ')}</td>
       </tr>`;
   }).join('');
 
@@ -1077,7 +1181,9 @@ function renderResult(row, isIPv6, locations, dateLabel) {
         <tr>
           <th>Backing prefix${tip('Associated BGP prefix as seen by RouteViews collectors.')}</th>
           <td>${row.backing_prefix
-            ? `<a class="tag tag-link" data-lookup="${escHtml(row.backing_prefix)}" href="?q=${encodeURIComponent(row.backing_prefix)}">${escHtml(row.backing_prefix)}</a>`
+            ? row.backing_prefix === row.prefix
+              ? `<span class="tag" title="Same as current prefix">${escHtml(row.backing_prefix)}</span>`
+              : `<a class="tag tag-link" data-lookup="${escHtml(row.backing_prefix)}" href="?q=${encodeURIComponent(row.backing_prefix)}">${escHtml(row.backing_prefix)}</a>`
             : '—'}</td>
         </tr>
         <tr>
@@ -1230,11 +1336,14 @@ document.getElementById('home-link').addEventListener('click', e => {
     lookupRow.style.display = '';
     compareRow.style.display = 'none';
   }
+  // Always reset to "Latest" — Home means default state, no date context
+  whenLatest.checked = true;
+  whenDate.checked   = false;
+  dateInput.value    = '';
+  syncDateUI(null);
   setStatus('Ready.');
-  const vk = selectedViewKey();
-  const urlDate = vk === 'latest' ? null : dateInput.value;
-  history.pushState(null, '', urlDate ? '?date=' + urlDate : '.');
-  refreshHomeStats(vk);
+  history.pushState(null, '', '.');
+  refreshHomeStats('latest');
 });
 
 resultsEl.addEventListener('click', e => {
@@ -1308,6 +1417,7 @@ resultsEl.addEventListener('click', e => {
   // ── Prefix row click (lookup or compare) ──
   const plRow = e.target.closest('.pl-row');
   if (plRow) {
+    e.preventDefault();
     const prefix = plRow.dataset.prefix;
     inputEl.value = prefix;
     if (plRow.classList.contains('cmp-click') && currentCompareCtx) {
@@ -1392,6 +1502,8 @@ asTableSectionEl.addEventListener('click', e => {
   }
   const asRow = e.target.closest('.as-row');
   if (asRow) {
+    if (e.button !== 0) return; // allow middle-click (new tab) and right-click naturally
+    e.preventDefault();
     const q = `AS${asRow.dataset.asn}`;
     inputEl.value = q;
     lookup(q);
@@ -1405,17 +1517,26 @@ inputEl.addEventListener('keydown', e => {
 });
 
 // ── Date picker UI ───────────────────────────────────────────────────────────
-const btnLatest        = document.getElementById('btn-latest');
-const btnPickDate      = document.getElementById('btn-pick-date');
-const btnPrevDay       = document.getElementById('btn-prev-day');
-const btnNextDay       = document.getElementById('btn-next-day');
-const dateNavGroup     = document.getElementById('date-nav-group');
-const dateLabelDisplay = document.getElementById('date-label-display');
+// (btnLatest/btnPickDate/btnPrevDay/btnNextDay/dateNavGroup/dateLabelDisplay
+//  are declared near the top of the file so syncDateUI() works inside the
+//  top-level await init block)
+
+// Position a hidden date input directly under its trigger button so the
+// native calendar popup opens near the button, not at the screen corner.
+function anchorPickerTo(input, btn) {
+  const r = btn.getBoundingClientRect();
+  input.style.left = r.left + 'px';
+  input.style.top  = (r.bottom + 2) + 'px';
+}
 
 // Sync visual state to a date string ('YYYY-MM-DD') or null for Latest
 function syncDateUI(date) {
   if (date) {
     dateLabelDisplay.textContent = date;
+    // Brief pop to confirm the calendar selection was registered
+    dateLabelDisplay.classList.remove('date-confirm-flash');
+    void dateLabelDisplay.offsetWidth; // force reflow so animation restarts
+    dateLabelDisplay.classList.add('date-confirm-flash');
     dateNavGroup.style.display   = 'flex';
     btnLatest.classList.remove('date-mode-active');
     btnPrevDay.disabled = !!dateInput.min && date <= dateInput.min;
@@ -1453,6 +1574,7 @@ btnLatest.addEventListener('click', () => {
 });
 
 btnPickDate.addEventListener('click', () => {
+  anchorPickerTo(dateInput, btnPickDate);
   try { dateInput.showPicker(); } catch { dateInput.click(); }
 });
 
@@ -1481,13 +1603,17 @@ function syncCmpBtn(btn, input) {
   if (input.value) {
     btn.textContent = input.value;
     btn.classList.add('date-mode-active');
+    // Brief pop to confirm the calendar selection was registered
+    btn.classList.remove('date-confirm-flash');
+    void btn.offsetWidth; // force reflow so animation restarts
+    btn.classList.add('date-confirm-flash');
   } else {
     btn.textContent = 'Pick date';
     btn.classList.remove('date-mode-active');
   }
 }
-btnCmpA.addEventListener('click', () => { try { cmpDateA.showPicker(); } catch { cmpDateA.click(); } });
-btnCmpB.addEventListener('click', () => { try { cmpDateB.showPicker(); } catch { cmpDateB.click(); } });
+btnCmpA.addEventListener('click', () => { anchorPickerTo(cmpDateA, btnCmpA); try { cmpDateA.showPicker(); } catch { cmpDateA.click(); } });
+btnCmpB.addEventListener('click', () => { anchorPickerTo(cmpDateB, btnCmpB); try { cmpDateB.showPicker(); } catch { cmpDateB.click(); } });
 cmpDateA.addEventListener('change', () => syncCmpBtn(btnCmpA, cmpDateA));
 cmpDateB.addEventListener('change', () => syncCmpBtn(btnCmpB, cmpDateB));
 
@@ -1498,6 +1624,17 @@ modeLookup.addEventListener('click', () => {
   modeCompare.classList.remove('active');
   lookupRow.style.display = '';
   compareRow.style.display = 'none';
+  resultsEl.innerHTML = '';
+  setStatus('');
+  resetPg();
+  currentLookupCtx = null;
+  currentCompareCtx = null;
+  chartSection.style.display = 'none';
+  asStatsSectionEl.style.display = 'none';
+  asTableSectionEl.style.display = 'none';
+  document.getElementById('showcase-section').style.display = 'none';
+  // Restore home-page stats for the current date selection
+  refreshHomeStats(selectedViewKey());
 });
 
 modeCompare.addEventListener('click', () => {
@@ -1506,6 +1643,15 @@ modeCompare.addEventListener('click', () => {
   modeLookup.classList.remove('active');
   lookupRow.style.display = 'none';
   compareRow.style.display = '';
+  resultsEl.innerHTML = '';
+  setStatus('');
+  resetPg();
+  currentLookupCtx = null;
+  currentCompareCtx = null;
+  chartSection.style.display = 'none';
+  asStatsSectionEl.style.display = 'none';
+  asTableSectionEl.style.display = 'none';
+  document.getElementById('showcase-section').style.display = 'none';
 });
 
 cmpBtn.addEventListener('click', () => runCompare());
@@ -1600,7 +1746,8 @@ async function runCompare({ updateUrl = true } = {}) {
     const isDomain = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z]{2,63}$/.test(query) &&
       !query.includes(':') && !query.includes('/');
     const isTLD = /^\.[a-zA-Z]{2,63}$/.test(query);
-    if (isDomain || isTLD) {
+    const isRoot = query === '.';
+    if (isDomain || isTLD || isRoot) {
       await compareDomain(isTLD ? query.slice(1) : query, dateA, dateB);
     } else {
       await comparePrefixDetail(query, dateA, dateB);
@@ -1679,11 +1826,64 @@ async function comparePrefixDetail(raw, dateA, dateB) {
   }
 
   const isIPv6 = prefix.includes(':');
-  const viewA = isIPv6 ? 'ipv6_a' : 'ipv4_a';
-  const viewB = isIPv6 ? 'ipv6_b' : 'ipv4_b';
   const safe = prefix.replace(/'/g, "''");
+  const lenMatch = prefix.match(/\/(\d+)$/);
+  const len = lenMatch ? parseInt(lenMatch[1]) : (isIPv6 ? 48 : 24);
+  const isBroadCidr = (!isIPv6 && len < 24) || (isIPv6 && len < 48);
 
   setStatus(`Comparing ${prefix} between ${dateA} and ${dateB}…`);
+
+  // ── Broad CIDR (e.g. /16): show all contained /24s or /48s in both dates ──
+  if (isBroadCidr) {
+    try {
+      const confExpr = (ab1, ab2, ab3, gcd1, gcd2) =>
+        `CASE WHEN GREATEST(${gcd1},${gcd2}) > 1 THEN 'high'
+              WHEN GREATEST(${ab1},${ab2},${ab3}) > 2 THEN 'medium'
+              ELSE 'low' END AS conf`;
+      const [vA, vB] = isIPv6 ? ['ipv6_a', 'ipv6_b'] : ['ipv4_a', 'ipv4_b'];
+      const [ab1, ab2, ab3, gcd1, gcd2] = isIPv6
+        ? ['AB_ICMPv6', 'AB_TCPv6', 'AB_DNSv6', 'GCD_ICMPv6', 'GCD_TCPv6']
+        : ['AB_ICMPv4', 'AB_TCPv4', 'AB_DNSv4', 'GCD_ICMPv4', 'GCD_TCPv4'];
+      const ver = isIPv6 ? 'v6' : 'v4';
+      const ce = (t) => confExpr(`${t}.${ab1}`,`${t}.${ab2}`,`${t}.${ab3}`,`${t}.${gcd1}`,`${t}.${gcd2}`);
+      const cinetA = `a.prefix::INET <<= '${safe}'::INET`;
+      const cinetB = `b.prefix::INET <<= '${safe}'::INET`;
+
+      const both = (await conn.query(`
+        SELECT '${ver}' AS ver, a.prefix, ${ce('a')}
+        FROM ${vA} a INNER JOIN ${vB} b ON a.prefix = b.prefix
+        WHERE ${cinetA} ORDER BY a.prefix
+      `)).toArray().map(r => r.toJSON());
+
+      const onlyA = (await conn.query(`
+        SELECT '${ver}' AS ver, a.prefix, ${ce('a')}
+        FROM ${vA} a LEFT JOIN ${vB} b ON a.prefix = b.prefix
+        WHERE b.prefix IS NULL AND ${cinetA} ORDER BY a.prefix
+      `)).toArray().map(r => r.toJSON());
+
+      const onlyB = (await conn.query(`
+        SELECT '${ver}' AS ver, b.prefix, ${ce('b')}
+        FROM ${vB} b LEFT JOIN ${vA} a ON b.prefix = a.prefix
+        WHERE a.prefix IS NULL AND ${cinetB} ORDER BY b.prefix
+      `)).toArray().map(r => r.toJSON());
+
+      setStatus('');
+      if (!both.length && !onlyA.length && !onlyB.length) {
+        resultsEl.innerHTML = `<div class="not-found">No anycast prefixes found within <strong>${escHtml(prefix)}</strong> in either date.<br><br>
+          If you know of a responsive IP in this block that our hitlist may be missing, feel free to
+          <a href="mailto:remi.hendriks@utwente.nl" style="color:#58a6ff">reach out</a> —
+          we are happy to improve coverage.</div>`;
+        return;
+      }
+      resultsEl.innerHTML = renderCompareResults(both, onlyA, onlyB, dateA, dateB);
+      currentCompareCtx = { dateA, dateB };
+    } catch (err) { setStatus('Compare error: ' + (err.message ?? ''), true); }
+    return;
+  }
+
+  // ── Exact /24 or /48 prefix compare ──
+  const viewA = isIPv6 ? 'ipv6_a' : 'ipv4_a';
+  const viewB = isIPv6 ? 'ipv6_b' : 'ipv4_b';
   try {
     const resA = await conn.query(`SELECT * FROM ${viewA} WHERE prefix = '${safe}'`);
     const resB = await conn.query(`SELECT * FROM ${viewB} WHERE prefix = '${safe}'`);
@@ -1692,7 +1892,10 @@ async function comparePrefixDetail(raw, dateA, dateB) {
 
     if (!rowsA.length && !rowsB.length) {
       setStatus('');
-      resultsEl.innerHTML = `<div class="not-found">Prefix <strong>${escHtml(prefix)}</strong> not found in either date.</div>`;
+      resultsEl.innerHTML = `<div class="not-found">Prefix <strong>${escHtml(prefix)}</strong> not found in either date.<br><br>
+        If you know of a responsive IP in this prefix that our hitlist may be missing, feel free to
+        <a href="mailto:remi.hendriks@utwente.nl" style="color:#58a6ff">reach out</a> —
+        we are happy to improve coverage.</div>`;
       return;
     }
 
@@ -1718,7 +1921,7 @@ function renderCompareResults(both, onlyA, onlyB, dateA, dateB) {
       const cl = r.conf === 'high' ? 'High' : r.conf === 'medium' ? 'Medium' : 'Low';
       return `<tr class="pl-row cmp-click" data-prefix="${escHtml(r.prefix)}">
         <td><span class="ver-badge">${r.ver}</span></td>
-        <td><span class="prefix-link">${escHtml(r.prefix)}</span></td>
+        <td><a class="prefix-link" href="?q=${encodeURIComponent(r.prefix)}">${escHtml(r.prefix)}</a></td>
         <td><span class="conf-col ${cc}">${cl}</span></td>
       </tr>`;
     }).join('');
@@ -1803,7 +2006,7 @@ function renderCompareResults(both, onlyA, onlyB, dateA, dateB) {
     return `<tr class="pl-row cmp-click" data-prefix="${escHtml(r.prefix)}">
       <td><span class="cmp-dot ${dotCls}"></span></td>
       <td><span class="ver-badge">${r.ver}</span></td>
-      <td><span class="prefix-link">${escHtml(r.prefix)}</span></td>
+      <td><a class="prefix-link" href="?q=${encodeURIComponent(r.prefix)}">${escHtml(r.prefix)}</a></td>
       <td><span class="conf-col ${cc}">${cl}</span></td>
     </tr>`;
   }).join('');
@@ -2032,7 +2235,16 @@ let chartDragCurrentX = null;
 async function refreshHomeStats(viewKey = 'latest') {
   asStatsReady = false;
   asTableReady = false;
-  const dateLabel = viewKey === 'latest' ? 'latest' : viewKey.replace(/\//g, '-');
+
+  // For the section headings, prefer the concrete date from chartData so all
+  // three sections display the same label (avoids "latest" vs "2026-03-17" mismatch).
+  let dateLabel;
+  if (viewKey === 'latest') {
+    dateLabel = chartData?.dates?.at(-1) ?? 'latest';
+  } else {
+    dateLabel = viewKey.replace(/\//g, '-');
+  }
+
   document.getElementById('as-stats-title').textContent =
     `Network statistics (high confidence) \u2014 ${dateLabel}`;
   document.getElementById('as-table-title').innerHTML =
@@ -2045,6 +2257,16 @@ async function refreshHomeStats(viewKey = 'latest') {
   document.getElementById('as-table-body').innerHTML = '';
   try { initShowcase(viewKey); } catch (_) {}
   await Promise.all([initASStats(viewKey), initASTable(viewKey)]);
+
+  // After stats load, re-sync headings — chartData may now be available if it
+  // wasn't when this function started (it loads in parallel with DuckDB).
+  if (viewKey === 'latest' && chartData?.dates?.length) {
+    const resolvedDate = chartData.dates.at(-1);
+    document.getElementById('as-stats-title').textContent =
+      `Network statistics (high confidence) \u2014 ${resolvedDate}`;
+    document.getElementById('as-table-title').innerHTML =
+      `ASes deploying anycast \u2014 ${resolvedDate} <span class="stat-note">(confident or better)</span>`;
+  }
 }
 
 async function initASStats(viewKey = 'latest') {
@@ -2124,13 +2346,15 @@ async function initASTable(viewKey = 'latest') {
 
     const id = `pg${++pgCounter}`;
     const pageSize = 10;
-    const renderRows = (slice) => slice.map(row => `
-      <tr class="as-row pl-row" data-asn="${escHtml(row.asn)}">
-        <td><span class="prefix-link">AS${escHtml(row.asn)}</span></td>
-        <td class="${row.n4 ? 'count' : 'count-zero'}">${row.n4 ? fmtN(row.n4) : '\u2014'}</td>
-        <td class="${row.n6 ? 'count' : 'count-zero'}">${row.n6 ? fmtN(row.n6) : '\u2014'}</td>
-        <td class="count">${fmtN(row.total)}</td>
-      </tr>`).join('');
+    const renderRows = (slice) => slice.map(row => {
+      const href = `?q=${encodeURIComponent('AS' + row.asn)}`;
+      return `
+      <tr class="as-row" data-asn="${escHtml(row.asn)}">
+        <td><a class="prefix-link" href="${href}">AS${escHtml(row.asn)}</a></td>
+        <td class="${row.n4 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${row.n4 ? fmtN(row.n4) : '\u2014'}</a></td>
+        <td class="${row.n6 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${row.n6 ? fmtN(row.n6) : '\u2014'}</a></td>
+        <td class="count"><a class="row-link" href="${href}">${fmtN(row.total)}</a></td>
+      </tr>`;}).join('');
 
     pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, sortCol: 'total', sortAsc: false };
     const initialBody = renderRows(rows.slice(0, pageSize));
@@ -2247,13 +2471,15 @@ async function initASTableCompare(dateA, dateB) {
     };
     const id = `pg${++pgCounter}`;
     const pageSize = 10;
-    const renderRows = (slice) => slice.map(row => `
-      <tr class="as-row pl-row" data-asn="${escHtml(row.asn)}">
-        <td><span class="prefix-link">AS${escHtml(row.asn)}</span></td>
-        <td class="${row.n4 ? 'count' : 'count-zero'}">${fmtDelta(row.n4, row.d4)}</td>
-        <td class="${row.n6 ? 'count' : 'count-zero'}">${fmtDelta(row.n6, row.d6)}</td>
-        <td class="count">${fmtDelta(row.total, row.dtotal)}</td>
-      </tr>`).join('');
+    const renderRows = (slice) => slice.map(row => {
+      const href = `?q=${encodeURIComponent('AS' + row.asn)}`;
+      return `
+      <tr class="as-row" data-asn="${escHtml(row.asn)}">
+        <td><a class="prefix-link" href="${href}">AS${escHtml(row.asn)}</a></td>
+        <td class="${row.n4 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${fmtDelta(row.n4, row.d4)}</a></td>
+        <td class="${row.n6 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${fmtDelta(row.n6, row.d6)}</a></td>
+        <td class="count"><a class="row-link" href="${href}">${fmtDelta(row.total, row.dtotal)}</a></td>
+      </tr>`;}).join('');
 
     pgStore[id] = { allRows: rows, rows, page: 0, pageSize, renderRows, sortCol: 'total', sortAsc: false };
     const initialBody = renderRows(rows.slice(0, pageSize));
@@ -2294,6 +2520,19 @@ function initShowcase(viewKey = 'latest') {
   const dateLabel = chartData.dates[idx];
   document.getElementById('showcase-title').textContent =
     `Anycast prefix counts \u2014 ${dateLabel}`;
+
+  // Warn when the history file lags behind today's date (common in "latest" mode
+  // before the daily stats-history.json update is deployed).
+  const noteEl = document.getElementById('showcase-date-note');
+  if (noteEl) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (viewKey === 'latest' && dateLabel < today) {
+      noteEl.textContent = `\u2139\uFE0F Prefix count history is updated daily and currently reflects ${dateLabel}. Network statistics below use the latest available census file.`;
+      noteEl.style.display = '';
+    } else {
+      noteEl.style.display = 'none';
+    }
+  }
 
   const set = (id, key) => {
     const el = document.getElementById(id);
@@ -2430,13 +2669,22 @@ function drawChart() {
 
   // X axis ticks + labels (~every 120 px)
   const xStep = Math.max(1, Math.round(120 / (plotW / nVis)));
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtXLabel = d => {
+    if (nVis <= 90) {
+      // "Mar 15" — useful when zoomed to 1W / 1M / 3M
+      const [, m, day] = d.split('-');
+      return `${MON[+m - 1]} ${+day}`;
+    }
+    return d.slice(0, 7); // "2026-03" for wide views
+  };
   ctx.fillStyle = '#8b949e';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   for (let i = vStart; i <= vEnd; i += xStep) {
     const x = xPos(i);
     ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, PAD.top + plotH); ctx.lineTo(x, PAD.top + plotH + 4); ctx.stroke();
-    ctx.fillText(dates[i].slice(0, 7), x, PAD.top + plotH + 8);
+    ctx.fillText(fmtXLabel(dates[i]), x, PAD.top + plotH + 8);
   }
 
   // Series lines — clipped to plot area so lines never bleed outside the axes

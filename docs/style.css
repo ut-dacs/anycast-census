@@ -111,6 +111,17 @@ h1 {
   text-align: center;
 }
 
+@keyframes date-confirm {
+  0%   { color: #e6edf3; transform: scale(1); }
+  25%  { color: #79c0ff; transform: scale(1.18); }
+  100% { color: #e6edf3; transform: scale(1); }
+}
+
+.date-confirm-flash {
+  animation: date-confirm 0.4s ease-out;
+  display: inline-block; /* transform needs a block context */
+}
+
 input[type="radio"] {
   accent-color: #58a6ff;
   cursor: pointer;
@@ -164,14 +175,32 @@ button {
 button:hover:not(:disabled) { background: #2ea043; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .status {
   color: #8b949e;
   font-size: 0.8rem;
   margin-bottom: 1rem;
   min-height: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .status.error { color: #f85149; }
+
+.status.loading::before {
+  content: '';
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+}
 
 .card {
   background: #161b22;
@@ -252,6 +281,13 @@ a.tag-link {
 }
 
 a.tag-link:hover { background: #2d333b; color: #58a6ff; }
+
+/* Invisible full-cell link — used in table rows so the entire row is right-clickable */
+a.row-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
 
 .loc-grid {
   display: grid;
