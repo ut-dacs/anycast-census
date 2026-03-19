@@ -1571,9 +1571,14 @@ function initMap(locations) {
   leafletMap = L.map('loc-map', {
     zoomControl: true,
     worldCopyJump: false,
-    maxBounds: [[-58, -180], [85, 180]],
-    maxBoundsViscosity: 1.0,
+    minZoom: 2,           // Don't zoom out too far
+    maxZoom: 19,
+    maxBounds: [[-85, -180], [85, 180]],
+    maxBoundsViscosity: 0.95,
   });
+
+  // Default center/zoom before fitting to markers
+  leafletMap.setView([20, 0], 2);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -2510,9 +2515,14 @@ function initCompareMap(locsA, locsB) {
   leafletMap = L.map('loc-map', {
     zoomControl: true,
     worldCopyJump: false,
-    maxBounds: [[-58, -180], [85, 180]],
-    maxBoundsViscosity: 1.0,
+    minZoom: 2,           // Don't zoom out too far
+    maxZoom: 19,
+    maxBounds: [[-85, -180], [85, 180]],
+    maxBoundsViscosity: 0.95,
   });
+
+  // Default center/zoom before fitting to markers
+  leafletMap.setView([20, 0], 2);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
