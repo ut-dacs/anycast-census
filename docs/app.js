@@ -1304,8 +1304,8 @@ async function fetchPrefixHistory(prefix) {
     const c      = parseInt(parts[2], 10);
     const localIdx = (b << 8) | c;   // 0–65 535 within this octet file
 
-    // Fetch entire binary file (Range requests don't work with python http.server)
-    const resp = await fetch(baseUrl + `data/history/${octet}.bin${_cacheBuster}`, {
+    // Fetch gzip-compressed binary file
+    const resp = await fetch(baseUrl + `data/history/${octet}.bin.gz${_cacheBuster}`, {
       cache: 'no-store'  // Force browser to not use cache
     });
     if (!resp.ok) {
@@ -1313,7 +1313,10 @@ async function fetchPrefixHistory(prefix) {
       return;
     }
 
-    const fileData = new Uint8Array(await resp.arrayBuffer());
+    // Decompress gzip data using pako
+    const compressedData = new Uint8Array(await resp.arrayBuffer());
+    const pako = (await import('https://cdn.jsdelivr.net/npm/pako@2.1.0/+esm')).default;
+    const fileData = new Uint8Array(pako.inflate(compressedData));
 
     // Extract the specific row for this prefix
     const rowStart = 16 + localIdx * row_size;

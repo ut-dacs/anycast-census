@@ -40,6 +40,7 @@ Usage
   The GitHub Actions deploy workflow calls this during gh-pages generation.
 """
 
+import gzip
 import struct
 import sys
 from pathlib import Path
@@ -150,18 +151,26 @@ def build(repo_root: Path, output_dir: Path) -> None:
         # a single parquet, so direct indexing works).
         data[idx, byte_pos] |= (state << bit_shift).astype(np.uint8)
 
-    # ── write per-octet files ────────────────────────────────────────────────
-    print(f'\nWriting {N_OCTETS} octet files to {output_dir} …')
+    # ── clean up old uncompressed files (if they exist) ────────────────────────
+    for octet in range(N_OCTETS):
+        old_path = output_dir / f'{octet}.bin'
+        if old_path.exists():
+            old_path.unlink()
+
+    # ── write per-octet files (gzip-compressed) ──────────────────────────────
+    print(f'\nWriting {N_OCTETS} octet files to {output_dir} (gzip-compressed) …')
 
     header = MAGIC + bytes([VERSION]) + struct.pack('<H', num_days) + b'\x00' * 9
 
     for octet in range(N_OCTETS):
-        out_path = output_dir / f'{octet}.bin'
+        out_path = output_dir / f'{octet}.bin.gz'
         lo = octet * N_PER_OCTET
         hi = lo + N_PER_OCTET
-        with open(out_path, 'wb') as f:
-            f.write(header)
-            f.write(data[lo:hi].tobytes())
+
+        # Combine header + data, then gzip compress
+        uncompressed = header + data[lo:hi].tobytes()
+        with gzip.open(out_path, 'wb', compresslevel=9) as f:
+            f.write(uncompressed)
 
         if octet % 64 == 0:
             mb = out_path.stat().st_size / 1e6
@@ -174,9 +183,9 @@ def build(repo_root: Path, output_dir: Path) -> None:
             f.write(date_str + '\n')
 
     total_mb = sum(
-        (output_dir / f'{o}.bin').stat().st_size for o in range(N_OCTETS)
+        (output_dir / f'{o}.bin.gz').stat().st_size for o in range(N_OCTETS)
     ) / 1e6
-    print(f'\nDone.  {num_days} days · {total_mb:,.0f} MB across {N_OCTETS} files.')
+    print(f'\nDone.  {num_days} days · {total_mb:,.0f} MB (compressed) across {N_OCTETS} files.')
     print(f'Dates: {dates_path}  ({num_days} entries)')
 
 
