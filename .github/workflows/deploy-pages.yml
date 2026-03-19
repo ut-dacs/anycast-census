@@ -65,8 +65,13 @@ jobs:
               json.dump(result, out, separators=(',', ':'))
           PYEOF
 
+      - name: Build prefix history binary files
+        run: |
+          pip install duckdb numpy --quiet
+          python3 docs/scripts/build_prefix_history.py
+
       - name: Copy web files to root for serving
-        run: cp docs/* .
+        run: cp -r docs/. .
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

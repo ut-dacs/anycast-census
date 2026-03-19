@@ -4,3 +4,10 @@ docs/20[0-9][0-9]
 
 # Generated at deploy time by the workflow — not tracked in main
 docs/stats-history.json
+docs/data/history/
+
+# Local build script and its artifacts
+build-local.sh
+
+# Config file (Docker can override with its own)
+docs/config.json

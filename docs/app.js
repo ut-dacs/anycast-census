@@ -32,6 +32,12 @@ const btnNextDay       = document.getElementById('btn-next-day');
 const dateNavGroup     = document.getElementById('date-nav-group');
 const dateLabelDisplay = document.getElementById('date-label-display');
 
+// ── Prefix history state ────────────────────────────────────────────────────
+// Cached history data (declared at top to avoid temporal dead zone)
+let _histDates = [];      // string[] of ISO dates from dates.txt
+let _histMeta  = null;    // { num_days, row_size } from binary file header
+const _cacheBuster = `?v=${Date.now()}&r=${Math.random()}`;  // Cache-bust on page load to avoid stale files
+
 // ── Pagination state ────────────────────────────────────────────────────────
 const pgStore = {};
 let pgCounter = 0;
@@ -44,12 +50,34 @@ function setStatus(msg, isError = false) {
     (isError ? ' error' : msg ? ' loading' : '');
 }
 
-// Base URL of the data files (same directory as this page)
-const baseUrl = (() => {
-  const u = new URL(window.location.href);
-  // Strip any filename, keep trailing slash
-  return u.origin + u.pathname.replace(/[^/]*$/, '');
-})();
+// Configuration and base URL setup
+let appConfig = { dataSource: '' };
+let baseUrl = '';
+
+const initConfig = async () => {
+  // Load config.json to determine data source
+  // Allows Docker to override to point to GitHub Pages instead of local files
+  try {
+    const resp = await fetch('config.json');
+    if (resp.ok) {
+      appConfig = await resp.json();
+    }
+  } catch (e) {
+    // config.json not found; use defaults
+  }
+
+  // Set baseUrl based on config
+  if (appConfig.dataSource) {
+    // Explicit data source URL (e.g., GitHub Pages for Docker)
+    baseUrl = appConfig.dataSource.endsWith('/')
+      ? appConfig.dataSource
+      : appConfig.dataSource + '/';
+  } else {
+    // Default: relative URLs (works locally and on GitHub Pages)
+    const u = new URL(window.location.href);
+    baseUrl = u.origin + u.pathname.replace(/[^/]*$/, '');
+  }
+};
 
 // Set max date to today
 dateInput.max = cmpDateA.max = cmpDateB.max = new Date().toISOString().slice(0, 10);
@@ -140,6 +168,9 @@ let asTableReady  = false;
 let chartData     = null;
 
 try {
+  // Load config first (determines data source URL)
+  await initConfig();
+
   const BUNDLES = duckdb.getJsDelivrBundles();
   const bundle  = await duckdb.selectBundle(BUNDLES);
 
@@ -753,6 +784,28 @@ async function lookupPrefix(prefix, viewKey, dateLabel) {
       document.getElementById('loc-csv-btn').addEventListener('click', () =>
         downloadLocCsv(locations, row.prefix));
     }
+
+    // Append presence-history card (IPv4 only; loaded async via Range request)
+    if (!isIPv6) {
+      const histCard = document.createElement('div');
+      histCard.className = 'card';
+      const histLastDate = _histDates.length > 0 ? _histDates[_histDates.length - 1] : '—';
+      const dateMismatch = histLastDate !== '—' && dateLabel !== histLastDate && dateLabel !== 'latest';
+      const mismatchNote = dateMismatch
+        ? `<div style="background:#1c1c2d;border:1px solid #4d3600;border-radius:4px;padding:0.6rem;` +
+          `margin-bottom:0.6rem;font-size:0.82rem;color:#d4a574">` +
+          `⚠️ Current lookup: <strong>${escHtml(dateLabel)}</strong> | ` +
+          `Latest history: <strong>${escHtml(histLastDate)}</strong></div>`
+        : '';
+      histCard.innerHTML =
+        `<div class="card-title">Presence history` +
+        `<span class="stat-note" style="font-weight:400;text-transform:none;` +
+        `letter-spacing:0;margin-left:0.5rem">from ${escHtml(_histDates?.[0] ?? 'census start')} to ${escHtml(histLastDate)}</span></div>` +
+        mismatchNote +
+        `<div id="prefix-history-strip"><span class="stat-note">Loading…</span></div>`;
+      resultsEl.appendChild(histCard);
+      fetchPrefixHistory(row.prefix);
+    }
   } catch (err) { handleQueryError(err, dateLabel); }
 }
 
@@ -1212,6 +1265,300 @@ function renderResult(row, isIPv6, locations, dateLabel) {
       </div>
     </div>` : ''}
   `;
+}
+
+// ── Prefix presence history ──────────────────────────────────────────────────
+// Reads from data/history/{octet}.bin (generated at deploy time).
+// File layout: 16-byte header + 65 536 rows × ceil(num_days/4) bytes.
+// Each row is one /24 prefix; 2 bits per day, 4 days packed per byte:
+//   00 = not in census   10 = low confidence   11 = confident
+// (_histDates and _histMeta are declared at the top of the file to avoid TDZ)
+
+async function _ensureHistMeta() {
+  // Always reload dates.txt to ensure we have the latest (don't cache)
+  const resp = await fetch(baseUrl + `data/history/dates.txt${_cacheBuster}`, {
+    cache: 'no-store'  // Force browser to not use cache
+  });
+  if (!resp.ok) throw new Error(`History index unavailable (HTTP ${resp.status})`);
+  const text = await resp.text();
+  _histDates = text.trim().split('\n').filter(Boolean);
+  _histMeta  = { num_days: _histDates.length,
+                 row_size: (_histDates.length + 3) >> 2 };
+}
+
+async function fetchPrefixHistory(prefix) {
+  // IPv6 history is not yet generated — skip silently
+  if (prefix.includes(':')) return;
+
+  const stripEl = document.getElementById('prefix-history-strip');
+  if (!stripEl) return;
+
+  try {
+    await _ensureHistMeta();
+    const { num_days, row_size } = _histMeta;
+
+    // Parse "a.b.c.0/24"
+    const parts  = prefix.split('.');
+    const octet  = parseInt(parts[0], 10);
+    const b      = parseInt(parts[1], 10);
+    const c      = parseInt(parts[2], 10);
+    const localIdx = (b << 8) | c;   // 0–65 535 within this octet file
+
+    // Fetch entire binary file (Range requests don't work with python http.server)
+    const resp = await fetch(baseUrl + `data/history/${octet}.bin${_cacheBuster}`, {
+      cache: 'no-store'  // Force browser to not use cache
+    });
+    if (!resp.ok) {
+      stripEl.textContent = 'History not available for this prefix.';
+      return;
+    }
+
+    const fileData = new Uint8Array(await resp.arrayBuffer());
+
+    // Extract the specific row for this prefix
+    const rowStart = 16 + localIdx * row_size;
+    const bytes = fileData.slice(rowStart, rowStart + row_size);
+
+    // Decode 2 bits per day
+    const states = new Uint8Array(num_days);
+    for (let d = 0; d < num_days; d++) {
+      const bp = d >> 2;
+      const bs = (3 - (d & 3)) << 1;
+      states[d] = (bytes[bp] >> bs) & 0b11;
+    }
+
+    // Summary stats
+    let firstSeen = null, lastSeen = null, nPresent = 0, nConf = 0;
+    for (let d = 0; d < num_days; d++) {
+      const s = states[d];
+      if (s === 0) continue;
+      nPresent++;
+      if (s === 3) nConf++;
+      if (firstSeen === null) firstSeen = _histDates[d];
+      lastSeen = _histDates[d];
+    }
+
+    // Colour map: 0=not detected, 2=low-conf, 3=confident
+    const colMap = { 0: '#1c2128', 2: '#7d4e00', 3: '#238636' };
+    const lblMap = { 0: 'not detected', 2: 'low confidence', 3: 'confident' };
+
+    const cells = Array.from(states).map((s, d) =>
+      `<span data-hist-day="${d}" style="flex:1;min-width:1px;background:${colMap[s] ?? colMap[0]};` +
+      `cursor:pointer;transition:opacity 0.2s" ` +
+      `title="Click to jump to ${escHtml(_histDates[d])}: ${lblMap[s] ?? 'unknown'}"></span>`
+    ).join('');
+
+    const legendItem = (col, lbl) =>
+      `<span style="display:inline-flex;align-items:center;gap:0.3rem">` +
+      `<span style="width:11px;height:11px;border-radius:2px;background:${col};` +
+      `border:1px solid #30363d;display:inline-block"></span>${escHtml(lbl)}</span>`;
+
+    // Date range and zoom buttons
+    const firstDate = _histDates[0] || '—';
+    const lastDate  = _histDates[num_days - 1] || '—';
+
+    stripEl.innerHTML =
+      `<div style="display:flex;justify-content:space-between;align-items:center;` +
+      `margin-bottom:0.5rem;font-size:0.82rem;color:#8b949e">` +
+      `<span><strong style="color:#e6edf3">${escHtml(firstDate)}</strong> to ` +
+      `<strong style="color:#e6edf3">${escHtml(lastDate)}</strong></span>` +
+      `<div style="display:flex;gap:0.4rem" id="hist-zoom-btns"></div>` +
+      `</div>` +
+      `<div style="position:relative">` +
+      `<div style="height:20px;font-size:0.75rem;color:#8b949e;margin-bottom:0.3rem;` +
+      `min-height:1.2em;display:flex;align-items:center" id="hist-tooltip"></div>` +
+      `<div style="display:flex;height:18px;border-radius:4px;overflow:hidden;` +
+      `border:1px solid #30363d;background:#0d1117" id="hist-strip">` +
+      `${cells}</div>` +
+      `</div>` +
+      `<div id="hist-zoomed" style="margin-top:0.8rem"></div>` +
+      `<div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:0.82rem;` +
+      `color:#8b949e;margin-bottom:0.5rem;margin-top:0.6rem">` +
+      `<span>First seen: <strong style="color:#e6edf3">${escHtml(firstSeen ?? '—')}</strong></span>` +
+      `<span>Last seen: <strong style="color:#e6edf3">${escHtml(lastSeen ?? '—')}</strong></span>` +
+      `<span>Present: <strong style="color:#e6edf3">${fmtN(nPresent)}/${fmtN(num_days)} days</strong></span>` +
+      `<span>Confident: <strong style="color:#e6edf3">${fmtN(nConf)} days</strong></span>` +
+      `</div>` +
+      `<div style="display:flex;gap:0.8rem;flex-wrap:wrap;font-size:0.78rem;color:#8b949e">` +
+      legendItem('#1c2128', 'not detected') +
+      legendItem('#7d4e00', 'low confidence') +
+      legendItem('#238636', 'confident') +
+      `</div>`;
+
+    // Helper to render a zoomed heatmap for a date range
+    const renderZoomedHeatmap = (startIdx, endIdx) => {
+      const zoomedStates = states.slice(startIdx, endIdx + 1);
+      const zoomedDates  = _histDates.slice(startIdx, endIdx + 1);
+      const zoomedCells = Array.from(zoomedStates).map((s, i) =>
+        `<div data-zoomed-day="${startIdx + i}" style="flex:1;background:${colMap[s] ?? colMap[0]};` +
+        `cursor:pointer;transition:opacity 0.2s;min-height:40px;border:1px solid #30363d;` +
+        `display:flex;align-items:center;justify-content:center;font-size:0.7rem;` +
+        `color:#8b949e;text-align:center;padding:4px" ` +
+        `title="Click to jump to ${escHtml(zoomedDates[i])}: ${lblMap[s] ?? 'unknown'}">` +
+        `${zoomedDates[i].split('-')[2]}</div>`
+      ).join('');
+
+      const zoomedEl = document.getElementById('hist-zoomed');
+      if (zoomedEl) {
+        zoomedEl.innerHTML = `
+          <div style="font-size:0.82rem;color:#8b949e;margin-bottom:0.4rem">
+            <strong>Zoomed: ${escHtml(zoomedDates[0])} to ${escHtml(zoomedDates[zoomedDates.length - 1])}</strong>
+          </div>
+          <div style="display:flex;border:1px solid #30363d;border-radius:4px;overflow:hidden;background:#0d1117">
+            ${zoomedCells}
+          </div>`;
+
+        // Attach listeners to zoomed cells
+        const zoomedCellEls = zoomedEl.querySelectorAll('[data-zoomed-day]');
+        zoomedCellEls.forEach(el => {
+          const dayIdx = parseInt(el.dataset.zoomedDay, 10);
+          const dateStr = _histDates[dayIdx];
+          el.addEventListener('mouseenter', () => {
+            el.style.opacity = '0.7';
+            el.style.filter = 'brightness(1.2)';
+          });
+          el.addEventListener('mouseleave', () => {
+            el.style.opacity = '1';
+            el.style.filter = 'brightness(1)';
+          });
+          el.addEventListener('click', () => {
+            dateInput.value = dateStr;
+            dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        });
+      }
+    };
+
+    // Attach click handlers and custom tooltip to full-timeline cells (synchronously)
+    const strip = document.getElementById('hist-strip');
+    const tooltip = document.getElementById('hist-tooltip');
+    if (strip && tooltip) {
+      const cellEls = strip.querySelectorAll('[data-hist-day]');
+      cellEls.forEach(el => {
+        const dayIdx = parseInt(el.dataset.histDay, 10);
+        const dateStr = _histDates[dayIdx];
+        const status = lblMap[states[dayIdx]] || 'unknown';
+        el.addEventListener('mouseenter', () => {
+          el.style.opacity = '0.7';
+          el.style.filter = 'brightness(1.2)';
+          tooltip.textContent = `${dateStr}  •  ${status}`;
+          tooltip.style.color = '#e6edf3';
+        });
+        el.addEventListener('mouseleave', () => {
+          el.style.opacity = '1';
+          el.style.filter = 'brightness(1)';
+          tooltip.textContent = '';
+        });
+        el.addEventListener('click', () => {
+          // Navigate to this date: set the date input and trigger applyDate
+          dateInput.value = dateStr;
+          dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      });
+    }
+
+    // Add zoom buttons and range picker
+    const zoomBtns = document.getElementById('hist-zoom-btns');
+    if (zoomBtns) {
+      const btnStyle = 'padding:0.3rem 0.6rem;font-size:0.75rem;border:1px solid #30363d;' +
+        'background:#0d1117;color:#8b949e;border-radius:3px;cursor:pointer;' +
+        'transition:all 0.2s;user-select:none';
+      const btnActiveStyle = btnStyle + ';background:#238636;color:#fff;border-color:#238636';
+
+      let lastActiveBtn = null;
+
+      const zoomRanges = [
+        { label: 'First 30d',  start: 0,               length: 30 },
+        { label: 'Last 30d',   start: num_days - 30,   length: 30 },
+        { label: 'Last 90d',   start: num_days - 90,   length: 90 },
+        { label: 'All',        start: 0,               length: num_days },
+      ];
+
+      zoomRanges.forEach(range => {
+        const btn = document.createElement('button');
+        btn.textContent = range.label;
+        btn.style.cssText = btnStyle;
+        btn.addEventListener('click', () => {
+          const startIdx = Math.max(0, range.start);
+          const endIdx = Math.min(num_days - 1, startIdx + range.length - 1);
+          renderZoomedHeatmap(startIdx, endIdx);
+
+          // Update button styles
+          zoomBtns.querySelectorAll('button').forEach(b => {
+            if (b.classList.contains('hist-range-btn')) b.style.cssText = btnStyle;
+          });
+          btn.style.cssText = btnActiveStyle;
+          lastActiveBtn = btn;
+        });
+        btn.addEventListener('mouseenter', () => {
+          if (btn !== lastActiveBtn) {
+            btn.style.background = '#161b22';
+          }
+        });
+        btn.addEventListener('mouseleave', () => {
+          if (btn !== lastActiveBtn) {
+            btn.style.background = '#0d1117';
+          }
+        });
+        btn.classList.add('hist-range-btn');
+        zoomBtns.appendChild(btn);
+      });
+
+      // Add a separator and custom range picker
+      const sep = document.createElement('div');
+      sep.style.cssText = 'width:1px;background:#30363d;margin:0 0.4rem';
+      zoomBtns.appendChild(sep);
+
+      const customBtn = document.createElement('button');
+      customBtn.textContent = '📅 Custom';
+      customBtn.style.cssText = btnStyle;
+      customBtn.addEventListener('click', () => {
+        const startDate = prompt(`Enter start date (YYYY-MM-DD):\n\nFirst available: ${_histDates[0]}`);
+        if (!startDate) return;
+        const startIdx = _histDates.indexOf(startDate);
+        if (startIdx === -1) {
+          alert('Start date not found in history');
+          return;
+        }
+
+        const endDate = prompt(`Enter end date (YYYY-MM-DD):\n\nLast available: ${_histDates[num_days - 1]}`);
+        if (!endDate) return;
+        const endIdx = _histDates.indexOf(endDate);
+        if (endIdx === -1) {
+          alert('End date not found in history');
+          return;
+        }
+
+        if (endIdx < startIdx) {
+          alert('End date must be after start date');
+          return;
+        }
+
+        renderZoomedHeatmap(startIdx, endIdx);
+
+        // Update button styles
+        zoomBtns.querySelectorAll('button').forEach(b => {
+          if (b.classList.contains('hist-range-btn')) b.style.cssText = btnStyle;
+        });
+        customBtn.style.cssText = btnActiveStyle;
+        lastActiveBtn = customBtn;
+      });
+      customBtn.addEventListener('mouseenter', () => {
+        if (customBtn !== lastActiveBtn) {
+          customBtn.style.background = '#161b22';
+        }
+      });
+      customBtn.addEventListener('mouseleave', () => {
+        if (customBtn !== lastActiveBtn) {
+          customBtn.style.background = '#0d1117';
+        }
+      });
+      zoomBtns.appendChild(customBtn);
+    }
+  } catch (err) {
+    const el = document.getElementById('prefix-history-strip');
+    if (el) el.innerHTML = `<span class="stat-note">History unavailable: ${escHtml(err.message)}</span>`;
+  }
 }
 
 // ── Map ────────────────────────────────────────────────────────────────────
