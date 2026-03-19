@@ -67,7 +67,7 @@ jobs:
 
       - name: Build prefix history binary files
         run: |
-          pip install duckdb numpy --quiet
+          pip install duckdb numpy pandas --quiet
           python3 docs/scripts/build_prefix_history.py
 
       - name: Copy web files to root for serving
