@@ -799,9 +799,11 @@ async function lookupPrefix(prefix, viewKey, dateLabel) {
       initMap(locations);
       document.getElementById('loc-csv-btn').addEventListener('click', () =>
         downloadLocCsv(locations, row.prefix));
+      document.getElementById('loc-json-btn')?.addEventListener('click', () =>
+        downloadLocJson(locations, row.prefix));
     }
 
-    // Append presence-history card (IPv4 only; loaded async via Range request)
+    // Insert presence-history card before detected locations (IPv4 only; loaded async via Range request)
     if (!isIPv6) {
       const histCard = document.createElement('div');
       histCard.className = 'card';
@@ -814,12 +816,17 @@ async function lookupPrefix(prefix, viewKey, dateLabel) {
           `Latest history: <strong>${escHtml(histLastDate)}</strong></div>`
         : '';
       histCard.innerHTML =
-        `<div class="card-title">Presence history` +
+        `<div class="card-title">Anycast presence history` +
         `<span class="stat-note" style="font-weight:400;text-transform:none;` +
-        `letter-spacing:0;margin-left:0.5rem">from ${escHtml(_histDates?.[0] ?? 'census start')} to ${escHtml(histLastDate)}</span></div>` +
+        `letter-spacing:0;margin-left:0.5rem">${escHtml(_histDates?.[0] ?? 'census start')} — ${escHtml(histLastDate)}</span></div>` +
         mismatchNote +
         `<div id="prefix-history-strip"><span class="stat-note">Loading…</span></div>`;
-      resultsEl.appendChild(histCard);
+      // Insert before the detected locations card (which has id="loc-map" inside it)
+      const locMapEl = document.getElementById('loc-map');
+      if (locMapEl) {
+        const locCard = locMapEl.closest('.card');
+        if (locCard) resultsEl.insertBefore(histCard, locCard);
+      }
       fetchPrefixHistory(row.prefix);
     }
   } catch (err) { handleQueryError(err, dateLabel); }
@@ -1269,7 +1276,10 @@ function renderResult(row, isIPv6, locations, dateLabel) {
     <div class="card">
       <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
         <span>Detected locations (${fmtN(locations.length)})</span>
-        <button id="loc-csv-btn" class="csv-btn">↓ CSV</button>
+        <div style="display:flex;gap:0.5rem">
+          <button id="loc-csv-btn" class="csv-btn">↓ CSV</button>
+          <button id="loc-json-btn" class="csv-btn">↓ JSON</button>
+        </div>
       </div>
       <p class="loc-note">Lower bound — actual number of PoPs may be higher.</p>
       <div id="loc-map"></div>
@@ -1671,6 +1681,15 @@ function downloadLocCsv(locations, prefix) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `${prefix.replace(/\//g, '_')}_locations.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function downloadLocJson(locations, prefix) {
+  const json = JSON.stringify(locations, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = `${prefix.replace(/\//g, '_')}_locations.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
