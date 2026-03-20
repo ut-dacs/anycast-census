@@ -20,9 +20,12 @@
       Search by IP, prefix, ASN, domain, or TLD.
     </p>
 
-    <div class="search-row">
+    <div class="search-row" style="position:relative">
       <input type="text" id="prefix-input" placeholder="1.1.1.0/24 · AS13335 · 8.8.8.8 · google.com · .nl" spellcheck="false" autocomplete="off">
       <button id="search-btn" disabled>Look up</button>
+      <div id="autocomplete-dropdown" class="autocomplete-dropdown" style="display:none">
+        <ul id="autocomplete-list" class="autocomplete-list"></ul>
+      </div>
     </div>
 
     <div class="mode-row">
@@ -248,6 +251,35 @@
             <li><a href="https://github.com/rhendriks/MAnycastR" target="_blank">MAnycastR</a> — measurement tooling for AB and GCD measurements.</li>
             <li><a href="https://github.com/rhendriks/MiGreedy" target="_blank">MiGreedy</a> — optimised implementation of the iGreedy latency-based geolocation algorithm.</li>
           </ul>
+        </div>
+      </details>
+
+      <details class="doc-item">
+        <summary>External data sources</summary>
+        <div class="doc-body">
+          <p>This census depends on the following publicly available datasets and resources:</p>
+          <div style="margin-top: 1rem">
+            <h4 style="margin: 1rem 0 0.5rem 0">Autonomous System Data</h4>
+            <ul style="margin: 0.5rem 0 1rem 0">
+              <li><strong><a href="https://www.caida.org/catalog/datasets/as-organizations/" target="_blank">CAIDA AS-to-Organization Mapping</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">Used for ASN names and organization information. Updated regularly from public WHOIS sources.</span></li>
+              <li><strong><a href="https://www.caida.org/catalog/datasets/routeviews-prefix2as/" target="_blank">CAIDA Prefix2AS (RouteViews)</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">BGP routing table prefixes and their origin ASNs. Updated daily from RouteViews collectors.</span></li>
+            </ul>
+
+            <h4 style="margin: 1rem 0 0.5rem 0">Probing Targets & Hitlists</h4>
+            <ul style="margin: 0.5rem 0 1rem 0">
+              <li><strong><a href="https://ant.isi.edu/datasets/index.html" target="_blank">USC/ISI ANT IPv4 Hitlist</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">One likely-responsive IP address per /24 block for ICMP probing. Updated quarterly.</span></li>
+              <li><strong><a href="https://public-dns.info/" target="_blank">Public DNS Nameservers</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">Directory of public DNS servers used for DNS query-based probing.</span></li>
+              <li><strong><a href="https://www.openintel.nl/" target="_blank">OpenINTEL</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">DNS infrastructure data (AAAA records for IPv6, infra:ns nameserver lists) for IPv4 and IPv6 probing targets.</span></li>
+              <li><strong><a href="https://ipv6hitlist.github.io/" target="_blank">TUM IPv6 Hitlist</a></strong><br/>
+                <span style="font-size: 0.9em; color: #8b949e">Responsive IPv6 addresses and aliased prefixes for IPv6 probing. Maintained by TUM.</span></li>
+            </ul>
+
+          </div>
         </div>
       </details>
 

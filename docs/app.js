@@ -32,6 +32,12 @@ const btnNextDay       = document.getElementById('btn-next-day');
 const dateNavGroup     = document.getElementById('date-nav-group');
 const dateLabelDisplay = document.getElementById('date-label-display');
 
+// ── ASN autocomplete state ──────────────────────────────────────────────────
+let _asnNames = {};  // { asn: name } mapping loaded from asn-names.json
+const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
+const autocompleteList = document.getElementById('autocomplete-list');
+let autocompleteHighlightedIndex = -1;
+
 // ── Prefix history state ────────────────────────────────────────────────────
 // Cached history data (declared at top to avoid temporal dead zone)
 let _histDates = [];      // string[] of ISO dates from dates.txt
@@ -171,6 +177,16 @@ try {
   // Load config first (determines data source URL)
   await initConfig();
 
+  // Load ASN names for autocomplete
+  try {
+    const resp = await fetch('asn-names.json');
+    if (resp.ok) {
+      _asnNames = await resp.json();
+    }
+  } catch (e) {
+    console.warn('Could not load ASN names:', e);
+  }
+
   const BUNDLES = duckdb.getJsDelivrBundles();
   const bundle  = await duckdb.selectBundle(BUNDLES);
 
@@ -187,7 +203,7 @@ try {
   await conn.query("LOAD inet");
   await registerViews('latest');
 
-  setStatus('Ready.');
+  setStatus('');
   searchBtn.disabled = false;
   examplesEl.style.display = '';
 
@@ -285,7 +301,7 @@ window.addEventListener('popstate', async e => {
     inputEl.value = '';
     resultsEl.innerHTML = '';
     resetPg();
-    setStatus('Ready.');
+    setStatus('');
     const date = params.get('date');
     if (date) {
       whenDate.checked   = true;
@@ -836,7 +852,10 @@ async function lookupASN(asn, viewKey, dateLabel) {
       return;
     }
     setStatus('');
-    resultsEl.innerHTML = renderPrefixList(rows, `AS${asn}`, dateLabel);
+    // Add ASN organization name if available
+    const asnName = _asnNames[asn];
+    const asnLabel = asnName ? `AS${asn} - ${asnName}` : `AS${asn}`;
+    resultsEl.innerHTML = renderPrefixList(rows, asnLabel, dateLabel);
     currentLookupCtx = { viewKey, dateLabel };
   } catch (err) { handleQueryError(err, dateLabel); }
 }
@@ -1696,7 +1715,7 @@ document.getElementById('home-link').addEventListener('click', e => {
   whenDate.checked   = false;
   dateInput.value    = '';
   syncDateUI(null);
-  setStatus('Ready.');
+  setStatus('');
   history.pushState(null, '', '.');
   refreshHomeStats('latest');
 });
@@ -1865,10 +1884,105 @@ asTableSectionEl.addEventListener('click', e => {
   }
 });
 
+// ── Autocomplete functions ─────────────────────────────────────────────────
+function showAutocomplete(matches) {
+  autocompleteList.innerHTML = '';
+  if (matches.length === 0) {
+    autocompleteDropdown.style.display = 'none';
+    return;
+  }
+
+  matches.forEach((match, idx) => {
+    const li = document.createElement('li');
+    li.textContent = match;
+    li.dataset.asn = match.split(' - ')[0];
+    li.addEventListener('click', () => {
+      inputEl.value = li.dataset.asn;
+      hideAutocomplete();
+      lookup(inputEl.value);
+    });
+    autocompleteList.appendChild(li);
+  });
+
+  autocompleteHighlightedIndex = -1;
+  autocompleteDropdown.style.display = 'block';
+}
+
+function hideAutocomplete() {
+  autocompleteDropdown.style.display = 'none';
+  autocompleteList.innerHTML = '';
+}
+
+function getAutocompleteMatches(input) {
+  const trimmed = input.trim();
+
+  // Only show autocomplete for ASN input (no dots, looks like "AS13335" or partial match)
+  // If input contains a dot (like "google.com"), it's a domain, skip autocomplete
+  // Require at least 2 characters to avoid excessive matches
+  if (trimmed.includes('.') || trimmed.length < 2) return [];
+
+  const query = trimmed.toUpperCase();
+  const cleanQuery = query.replace(/^AS/, '');
+  const nameQuery = trimmed.toLowerCase();
+  const matches = [];
+  const seen = new Set();
+
+  // Match by ASN number first (more specific)
+  for (const [asn, name] of Object.entries(_asnNames)) {
+    if (asn.includes(cleanQuery)) {
+      matches.push(`AS${asn} - ${name}`);
+      seen.add(asn);
+    }
+  }
+
+  // Also match by name
+  for (const [asn, name] of Object.entries(_asnNames)) {
+    if (!seen.has(asn) && name.toLowerCase().includes(nameQuery)) {
+      matches.push(`AS${asn} - ${name}`);
+      seen.add(asn);
+    }
+  }
+
+  return matches.sort();
+}
+
 searchBtn.addEventListener('click', () => lookup(inputEl.value));
 
 inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter') lookup(inputEl.value);
+  if (e.key === 'Enter') {
+    hideAutocomplete();
+    lookup(inputEl.value);
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const items = autocompleteList.querySelectorAll('li');
+    if (items.length > 0) {
+      autocompleteHighlightedIndex = Math.min(autocompleteHighlightedIndex + 1, items.length - 1);
+      items.forEach((item, idx) => {
+        item.classList.toggle('selected', idx === autocompleteHighlightedIndex);
+      });
+    }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const items = autocompleteList.querySelectorAll('li');
+    if (items.length > 0) {
+      autocompleteHighlightedIndex = Math.max(autocompleteHighlightedIndex - 1, -1);
+      items.forEach((item, idx) => {
+        item.classList.toggle('selected', idx === autocompleteHighlightedIndex);
+      });
+    }
+  } else if (e.key === 'Escape') {
+    hideAutocomplete();
+  }
+});
+
+inputEl.addEventListener('input', e => {
+  const matches = getAutocompleteMatches(e.target.value);
+  showAutocomplete(matches);
+});
+
+inputEl.addEventListener('blur', () => {
+  // Hide after a small delay to allow click on dropdown item
+  setTimeout(hideAutocomplete, 200);
 });
 
 // ── Date picker UI ───────────────────────────────────────────────────────────
@@ -2708,9 +2822,11 @@ async function initASTable(viewKey = 'latest') {
     const pageSize = 10;
     const renderRows = (slice) => slice.map(row => {
       const href = `?q=${encodeURIComponent('AS' + row.asn)}`;
+      const asnName = _asnNames[row.asn];
+      const asnDisplay = asnName ? `${escHtml(asnName)} (AS${escHtml(row.asn)})` : `AS${escHtml(row.asn)}`;
       return `
       <tr class="as-row" data-asn="${escHtml(row.asn)}">
-        <td><a class="prefix-link" href="${href}">AS${escHtml(row.asn)}</a></td>
+        <td><a class="prefix-link" href="${href}">${asnDisplay}</a></td>
         <td class="${row.n4 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${row.n4 ? fmtN(row.n4) : '\u2014'}</a></td>
         <td class="${row.n6 ? 'count' : 'count-zero'}"><a class="row-link" href="${href}">${row.n6 ? fmtN(row.n6) : '\u2014'}</a></td>
         <td class="count"><a class="row-link" href="${href}">${fmtN(row.total)}</a></td>

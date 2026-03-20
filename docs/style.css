@@ -159,6 +159,40 @@ input[type="text"] {
 input[type="text"]:focus { border-color: #58a6ff; }
 input[type="text"]::placeholder { color: #484f58; }
 
+/* Autocomplete dropdown */
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.autocomplete-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.autocomplete-list li {
+  padding: 0.5rem 0.75rem;
+  color: #e6edf3;
+  cursor: pointer;
+  border-bottom: 1px solid #21262d;
+  transition: background-color 0.15s;
+}
+
+.autocomplete-list li:last-child { border-bottom: none; }
+.autocomplete-list li:hover { background-color: #21262d; }
+.autocomplete-list li.selected { background-color: #0d1e3a; color: #58a6ff; }
+
 button {
   background: #238636;
   border: 1px solid #2ea043;
