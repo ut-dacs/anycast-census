@@ -3,8 +3,28 @@
 
 [This repository](https://github.com/ut-dacs/anycast-census) contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
 The repository is updated daily.
+Please visit [manycast.net](https://manycast.net) for a user-friendly dashboard to explore the dataset.
 
 Contact [remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)
+
+## Downloading census data
+
+The parquet files in this repository can be downloaded in alternative formats via the [manycast.net REST API](https://manycast.net/api/docs):
+
+| Format | Example |
+|--------|---------|
+| `.parquet` | `https://manycast.net/api/v1/export/IPv4-latest.parquet` |
+| `.parquet.gz` | `https://manycast.net/api/v1/export/IPv4-latest.parquet.gz` |
+| `.csv.gz` | `https://manycast.net/api/v1/export/IPv4-latest.csv.gz` |
+| `.json.gz` | `https://manycast.net/api/v1/export/IPv4-latest.json.gz` |
+
+Replace `latest` with a specific date (e.g., `2026-03-22`) to download a historical snapshot.
+Both IPv4 and IPv6 are available (`IPv4-` / `IPv6-` prefix).
+
+Example:
+`curl -O https://manycast.net/api/v1/export/IPv4-2026-03-22.csv.gz`
+
+Full API documentation, including endpoints for querying individual prefixes, ASNs, and daily statistics, is available at [manycast.net/api/docs](https://manycast.net/api/docs).
 
 ## Recommendations for using the census
 
