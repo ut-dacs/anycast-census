@@ -57,7 +57,9 @@ Additionally, we use sources like [public DNS nameservers](public-dns.info) and 
 Hitlists are updated quarterly in sync with the USC/ISI hitlist.
 
 ## IPv6
-We use AAAA record addresses from [OpenINTEL](https://www.openintel.nl/) and TUM's public IPv6 hitlist [IPv6Hitlist](https://ipv6hitlist.github.io/).
+We use AAAA record addresses from [OpenINTEL](https://www.openintel.nl/),
+TUM's public IPv6 hitlist [IPv6Hitlist](https://ipv6hitlist.github.io/),
+and TU Dresden and HAW Hamburg's SRA hitlist [IPv6-SRA](https://ipv6-sra.realmv6.org/).
 To maintain reasonable probing times, we scan only the first /48 of aliased prefixes.
 A join with the aliased prefixes set from TUM's hitlist, should give a more complete list of anycast prefixes.
 
