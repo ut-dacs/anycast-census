@@ -1,4 +1,7 @@
 # LACeS Anycast Census
+
+[![DOI](https://img.shields.io/badge/DOI-10.1145%2F3730567.3764484-blue.svg)](https://doi.org/10.1145/3730567.3764484)
+
 [LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System](https://doi.org/10.1145/3730567.3764484)
 
 [This repository](https://github.com/ut-dacs/anycast-census) contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
