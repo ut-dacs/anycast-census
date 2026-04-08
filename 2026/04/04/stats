@@ -1,0 +1,12 @@
+
+Counts:
+* Anycast-based ICMPv4: 35,029
+* Anycast-based TCPv4: 11,180
+* Anycast-based DNSv4: 2,881
+* GCD-based ICMPv4: 14,764
+* GCD-based TCPv4: 5,425
+* Anycast-based ICMPv6: 11,802
+* Anycast-based TCPv6: 8,375
+* Anycast-based DNSv6: 2,399
+* GCD-based ICMPv6: 11,358
+* GCD-based TCPv6: 7,557
