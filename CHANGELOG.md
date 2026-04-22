@@ -27,3 +27,4 @@
 * 09/01/2026 - Increase in Ark VPs (increasing average enumeration of IPv4 anycast by 15%)
 * 19/01/2026 - Hitlist update (v4, v6)
 * 23/03/2026 - Hitlist update (v6) adding SRA
+* 21/04/2026 - Hitlist update (v4)
