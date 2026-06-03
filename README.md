@@ -35,6 +35,27 @@ TLDR:
 * We recommend filtering on `(AB > 3) || (GCD > 1)` when high confidence is needed.
 * We recommend filtering on `(AB > 1) || (GCD > 1)` (all) when completeness is needed. 
 
+## Python helper
+
+[`census_helper.py`](census_helper.py) provides convenience functions for downloading and filtering the dataset. Requires `pandas`, `pyarrow`, and `requests`.
+
+```python
+import census_helper
+
+# Download latest snapshot and filter to high-confidence anycast prefixes
+census = census_helper.download_latest("v4")
+anycast = census_helper.filter_anycast(census, "v4")
+
+# Or use comprehensive coverage (includes borderline cases)
+anycast = census_helper.filter_anycast(census, "v4", confidence="comprehensive")
+```
+
+Command-line usage:
+```bash
+python census_helper.py --ip-version v4 --date latest --prefixes-only
+python census_helper.py --ip-version v4 --date 20260203 --confidence comprehensive
+```
+
 ### False detection of anycast
 The anycast-based approach (AB) suffers from FPs (see [MAnycast2](https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf)).
 These FPs are especially prevalent when AB has a value of less than 3 (i.e., receiving replies at less than 3 sites).
