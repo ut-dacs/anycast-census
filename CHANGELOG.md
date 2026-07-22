@@ -28,3 +28,4 @@
 * 19/01/2026 - Hitlist update (v4, v6)
 * 23/03/2026 - Hitlist update (v6) adding SRA
 * 21/04/2026 - Hitlist update (v4)
+* 17/07/2026 [ONGOING] - Outage problems at anycast PoPs
