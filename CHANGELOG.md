@@ -11,6 +11,7 @@
 
 ## Infrastructure
 
+* **2026-08-14** - Upgraded the [MiGreedy](https://github.com/rhendriks/MiGreedy) version used from v1.2.3 to v1.6.0 for better geolocation output using intersections within clusters.
 * **2026-08-05** — Scanning now performed using the `--responsive` flag of [MAnycastR](https://github.com/rhendriks/MAnycastR), reducing probing time and cost by 40%.
 * **2026-01-09** — Increase in [Ark](https://caida.org/projects/ark/) vantage points, raising average IPv4 anycast enumeration by 15%.
 * **2025-09-04** — Updated feedback loop (ICMPv6).
