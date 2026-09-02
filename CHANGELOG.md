@@ -22,6 +22,7 @@
 * **2024-05-31** — GCD measurements now performed using the Ark platform instead of [TANGLED](https://tangled.dacs.utwente.nl/) nodes.
 
 ## Hitlist Updates
+* **2026-09-01** - All hitlists updated.
 * **2026-04-21** — IPv4 hitlists update.
 * **2026-03-27** - Added [ODNS](https://odns-data.netd.cs.tu-dresden.de/) to the IPv4 DNS hitlist, covering an additional 150 anycast /24-prefixes.
 * **2026-03-23** — IPv6 hitlists update, adding [SRA](https://ipv6-sra.realmv6.org/).
