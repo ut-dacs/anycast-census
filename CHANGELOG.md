@@ -11,6 +11,9 @@
 
 ## Infrastructure
 
+* **2026-09-03** - Experimental: added unicast geolocation results for prefixes with AB>1 and GCD==1, may remove this feature if unicast geolocation results are poor or undesired.
+* **2026-09-03** - Accuracy of geolocation results are now contained by indicating the radius of the RTT disc that found the site, and the number of discs that helped in constraining the eligible area.
+* **2026-09-03** - Latency files are no longer pre-filtered to <50ms replies, increasing geolocation accuracy in cases where large RTT discs help with site discovery or narrowing the eligible area for an already discovered site.
 * **2026-09-01** - Upgraded the hitlist to make use of multiple ranked targets per prefix (see ISI hitlist format) as MAnycastR now natively supports multi-target probing per prefix (probing targets iteratively till one replies to minimize cost). Results in 20% higher coverage (majority unicast).
 * **2026-08-14** - Upgraded the [MiGreedy](https://github.com/rhendriks/MiGreedy) version used from v1.2.3 to v1.6.0 for better geolocation output using intersections within clusters.
 * **2026-08-05** — Scanning now performed using the `--responsive` flag of [MAnycastR](https://github.com/rhendriks/MAnycastR), reducing probing time and cost by 40%.
