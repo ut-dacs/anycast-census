@@ -1,16 +1,32 @@
 # LACeS Anycast Census
 
-[![DOI](https://img.shields.io/badge/DOI-10.1145%2F3730567.3764484-blue.svg)](https://doi.org/10.1145/3730567.3764484)
+[![DOI](https://img.shields.io/badge/DOI-10.1145%2F3730567.3764484-blue)](https://doi.org/10.1145/3730567.3764484)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Website](https://img.shields.io/badge/Website-manycast.net-blue)](https://manycast.net)
 
 [LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System](https://doi.org/10.1145/3730567.3764484)
 
-[This repository](https://github.com/ut-dacs/anycast-census) contains the dataset of the Anycast Census (detected /24 Anycast Prefixes), discovered using LACeS.
-The repository is updated daily.
-Please visit [manycast.net](https://manycast.net) for a user-friendly dashboard to explore the dataset.
+**Contact:** [remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)
 
-Contact [remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)
+## Contents
+
+- [Downloading census data](#downloading-census-data)
+- [LACeS Explorer — interactive web interface](#laces-explorer--interactive-web-interface)
+- [Using the Python helper](#using-the-python-helper)
+- [Understanding the dataset](#understanding-the-dataset)
+  - [Data recommendations](#data-recommendations)
+  - [Detection methods](#detection-methods)
+- [Data structure](#data-structure)
+  - [Columns](#columns)
+  - [Geolocation accuracy metrics](#geolocation-accuracy-metrics)
+  - [Unicast geolocation results](#unicast-geolocation-results)
+- [Measurement methodology](#measurement-methodology)
+- [Running your own census](#running-your-own-census)
+- [Citation](#citation)
 
 ## Downloading census data
+
+### Available formats
 
 The parquet files in this repository can be downloaded in alternative formats via the [manycast.net REST API](https://manycast.net/api/docs):
 
@@ -21,23 +37,33 @@ The parquet files in this repository can be downloaded in alternative formats vi
 | `.csv.gz` | `https://manycast.net/api/v1/export/IPv4-latest.csv.gz` |
 | `.json.gz` | `https://manycast.net/api/v1/export/IPv4-latest.json.gz` |
 
-Replace `latest` with a specific date (e.g., `2026-03-22`) to download a historical snapshot.
-Both IPv4 and IPv6 are available (`IPv4-` / `IPv6-` prefix).
+Replace `latest` with a specific date (e.g., `2026-03-22`) to download a historical snapshot. Both IPv4 and IPv6 are available with prefixes `IPv4-` and `IPv6-`.
 
-Example:
-`curl -O https://manycast.net/api/v1/export/IPv4-2026-03-22.csv.gz`
+**Example:**
+```bash
+curl -O https://manycast.net/api/v1/export/IPv4-2026-03-22.csv.gz
+```
 
-Full API documentation, including endpoints for querying individual prefixes, ASNs, and daily statistics, is available at [manycast.net/api/docs](https://manycast.net/api/docs).
+See the [full API documentation](https://manycast.net/api/docs) for querying individual prefixes, ASNs, and daily statistics.
 
-## Recommendations for using the census
+## LACeS Explorer — interactive web interface
 
-TLDR:
-* We recommend filtering on `(AB > 3) || (GCD > 1)` when high confidence is needed.
-* We recommend filtering on `(AB > 1) || (GCD > 1)` (all) when completeness is needed. 
+We provide an [interactive dashboard](https://manycast.net) for querying, visualizing, and exploring the census data:
 
-## Python helper
+**Search & lookup.** Enter any IP address, prefix, ASN, domain, or TLD to look up anycast status, geolocation of detected PoPs, and related network information.
+Historical snapshots are available for all census dates since March 21, 2024.
 
-[`census_helper.py`](census_helper.py) provides convenience functions for downloading and filtering the dataset. Requires `pandas`, `pyarrow`, and `requests`.
+**Compare mode.** Select two different census dates to track how anycast deployment changed over time.
+
+**RIPE Atlas integration.** Run the geolocation algorithm on public RIPE Atlas results.
+
+**Analytics.** Statistics over time, anycast by region, Hilbert curve of anycast space, ...
+
+## Using the Python helper
+
+The [`census_helper.py`](census_helper.py) file provides convenience functions for downloading and filtering the dataset. Requires `pandas`, `pyarrow`, and `requests`.
+
+### Basic usage
 
 ```python
 import census_helper
@@ -50,74 +76,53 @@ anycast = census_helper.filter_anycast(census, "v4")
 anycast = census_helper.filter_anycast(census, "v4", confidence="comprehensive")
 ```
 
-Command-line usage:
+### Command-line usage
+
 ```bash
 python census_helper.py --ip-version v4 --date latest --prefixes-only
-python census_helper.py --ip-version v4 --date 20260203 --confidence comprehensive
+python census_helper.py --ip-version v4 --date 2026-03-22 --confidence comprehensive
 ```
 
-### False detection of anycast
-The anycast-based approach (AB) suffers from FPs (see [MAnycast2](https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf)).
-These FPs are especially prevalent when AB has a value of less than 3 (i.e., receiving replies at less than 3 sites).
+## Understanding the dataset
 
-### False detection of unicast
-The latency-based approach (GCD) is highly accurate.
-However, it has rare cases of FNs when anycast is deployed in small geographic regions (i.e., regional anycast).
+### Data recommendations
 
-### Recommendations
-If high confidence is needed, ensure that AB is higher than 3 or GCD detects anycast.
-If completeness is needed, use all prefixes in this census (either methodology detects anycast).
+Depending on requirements we recommend the following filtering:
 
-## Partial anycast
-To minimize the impact of our daily probing methodology we scan at a /24 granularity.
-However, there are cases of partial anycast where the /24 contains both unicast and anycast addresses.
-Scanning at /32 granularity reveals ~1.0k /24s are partially anycast.
-We flag these cases using bi-annual measurement data, but partial prefixes are dynamic over time.
-Future work is providing an API for live measurements.
-
-## IPv4
-We use the [USC/ISI ANT IPv4 hitlist](https://ant.isi.edu/datasets/index.html) containing a single likely ICMP/ping responsive IP address per /24 block as representative.
-Additionally, we use sources like [public DNS nameservers](public-dns.info) and [OpenINTEL infra:ns](openintel.nl) for our DNS hitlist, and large-scale zmap TCP SYN/ACK scans for our TCP hitlist.
-Hitlists are updated quarterly in sync with the USC/ISI hitlist.
-
-## IPv6
-We use AAAA record addresses from [OpenINTEL](https://www.openintel.nl/),
-TUM's public IPv6 hitlist [IPv6Hitlist](https://ipv6hitlist.github.io/),
-and TU Dresden and HAW Hamburg's SRA hitlist [IPv6-SRA](https://ipv6-sra.realmv6.org/).
-To maintain reasonable probing times, we scan only the first /48 of aliased prefixes.
-A join with the aliased prefixes set from TUM's hitlist, should give a more complete list of anycast prefixes.
-
-## Citing LACeS
-When making use of this dataset for academic research, please cite the following research paper.
-
+**High confidence:**
 ```
-@inproceedings{10.1145/3730567.3764484,
-      author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and Sommese, Raffaele and van Rijswijk-Deij, Roland},
-      title = {LACeS: An Open, Fast, Responsible and Efficient Longitudinal Anycast Census System},
-      year = {2025},
-      isbn = {9798400718601},
-      publisher = {Association for Computing Machinery},
-      address = {New York, NY, USA},
-      url = {https://doi.org/10.1145/3730567.3764484},
-      doi = {10.1145/3730567.3764484},
-      abstract = {IP anycast replicates an address at multiple locations to reduce latency and enhance resilience. Due to anycast's crucial role in the modern Internet, earlier research introduced tools to perform anycast censuses. The first, iGreedy, uses latency measurements from geographically dispersed locations to map anycast deployments. The second, MAnycast2, uses anycast to perform a census of other anycast networks. MAnycast2's advantage is speed and coverage but suffers from problems with accuracy, while iGreedy is highly accurate but slower using author-defined probing rates and costlier. In this paper we address the shortcomings of both systems and present LACeS (Longitudinal Anycast Census System). Taking MAnycast2 as a basis, we completely redesign its measurement pipeline, and add support for distributed probing, additional protocols (DNS over UDP, TCP SYN/ACK, and IPv6) and latency measurements similar to iGreedy. We validate LACeS on an anycast testbed with 32 globally distributed nodes, compare against an external anycast production deployment, extensive latency measurements with RIPE Atlas and cross-check over 60\% of detected anycast using operator ground truth that shows LACeS achieves high accuracy. Finally, we provide a longitudinal analysis of anycast, covering 17+months, showing LACeS achieves high precision. We make continual daily LACeS censuses available to the community and release the source code of the tool under a permissive open source license.},
-      booktitle = {Proceedings of the 2025 ACM Internet Measurement Conference},
-      pages = {445–461},
-      numpages = {17},
-      keywords = {internet measurement, anycast, internet topology, routing, ip},
-      location = {USA},
-      series = {IMC '25}
-}
+(AB > 3) || (GCD > 1)
 ```
 
-## Anycast Detection Data Structure
+**Comprehensive coverage:**
+```
+(AB > 1) || (GCD > 1)
+```
 
-Following we describe the structure of the provided census files.
+### Detection methods
 
-### Detection Files
-#### Path:
+The census uses two detection methods:
 
-* Latest files (updated daily)
+**Anycast-based (AB):** Detects anycast using anycast.
+A prefix is considered anycast if multiple PoPs receive replies.
+See [MAnycast2](https://www.sysnet.ucsd.edu/sysnet/miscpapers/manycast2-imc20.pdf) for details.
+Three probe protocols are used: ICMP/ping, TCP SYN/ACK, and DNS/UDP.
+
+- **False positives (FPs):** This method is known to produce FPs, especially when the number of receiving PoPs is < 4.
+
+**Latency-based (GCD):** Detects anycast using latency measurements and Great-Circle-Distance calculations.
+
+- **False negatives (FNs):** Highly accurate, but struggles with detecting regional anycast (i.e., anycast deployed within a tight geographic area).
+
+**NOTE**
+We provide unicast geolocation results when AB > 1 but GCD == 1.
+This may help with determining whether AB results are FPs or GCD results are FNs.
+
+## Data structure
+
+### File paths
+
+**Latest files (updated daily):**
 ```
 IPv4-latest.parquet
 IPv6-latest.parquet
@@ -126,7 +131,7 @@ IPv6-latest.csv
 stats-latest
 ```
 
-* Historical files (going back to March 21, 2024)
+**Historical files (since March 21, 2024):**
 ```
 YYYY/MM/DD/IPv4.parquet
 YYYY/MM/DD/IPv6.parquet
@@ -134,48 +139,88 @@ YYYY/MM/DD/IPv4.csv
 YYYY/MM/DD/IPv6.csv
 YYYY/MM/DD/stats
 ```
-#### Structure:
-**Example**
-IPv4.parquet
-```bash
-prefix  AB_ICMPv4  AB_TCPv4  AB_DNSv4  GCD_ICMPv4  GCD_TCPv4  partial backing_prefix            ASN                                          locations
-1.1.1.0/24         29        29        29          67         30    False     1.1.1.0/24          13335  [{'city': 'Honolulu', 'code_country': 'US', 'id': 'HNL', 'latitude': 21.3187007904, 'longitude': -157.9219970703}, ... ]
+
+### Columns
+
+| Column | Description |
+|--------|-------------|
+| `prefix` | The candidate anycast /24 prefix (e.g., `1.0.0.0/24`) |
+| `AB_ICMPv4/v6` | Locations found using anycast-based method (ICMP) |
+| `AB_TCPv4/v6` | Locations found using anycast-based method (TCP SYNACK) |
+| `AB_DNSv4/v6` | Locations found using anycast-based method (DNS/UDP) |
+| `GCD_ICMPv4/v6` | Sites found using latency-based method (ICMP) |
+| `GCD_TCPv4/v6` | Sites found using latency-based method (TCP) |
+| `partial` | Whether partial anycast was detected (IPv4 only) |
+| `backing_prefix` | Corresponding IP routing table prefix (RouteViews) |
+| `ASN` | ASN(s) announcing the prefix (MOASes separated by `;`) |
+| `locations` | Detailed geolocation data from detected sites (see below) |
+
+### Locations column
+
+| Field | Description |
+|-------|-------------|
+| `city` | Geolocated city using iGreedy's algorithm |
+| `country_code` | 2-character country code (ISO 3166-1 alpha-2) |
+| `airport_code` | Nearest airport IATA 3-letter code |
+| `lat` | Airport latitude |
+| `lon` | Airport longitude |
+| `radius` | Radius of the RTT disc in kilometers |
+| `candidate_diameter` | Maximum pairwise distance (km) between surviving candidate cities; smaller values indicate higher precision |
+| `num_constraints` | Number of overlapping discs that refined the candidate set; higher values indicate higher confidence in the result |
+
+The last three fields help in determining the confidence of geolocation results.
+
+### CSV format
+
+Limited data is provided in CSV format for ease of access via GitHub's Web UI:
+
 ```
-
-**Columns**
-- `Prefix`: The candidate anycast /24 prefix being analyzed (e.g., "1.0.0.0/24").
-- `AB_ICMPv4/v6`: Number of locations found using the anycast-based method (ICMP).
-- `AB_TCPv4/v6`: Number of locations found using the anycast-based method (TCP SYNACK).
-- `AB_DNSv4/v6`: Number of locations found using the anycast-based method (DNS/UDP).
-- `GCD_ICMPv4/v6`: Number of sites found using the latency-based method (ICMP).
-- `GCD_TCPv4/v6`: Number of sites found using the latency-based method (TCP).
-- `partial`: Whether we detected partial anycast in this prefix (IPv4 only).
-- `backing_prefix`: Corresponding IP routing table prefix (as observed using RouteViews).
-- `ASN`: ASN(s) announcing the prefix (MOASes are separated by `_`).
-- `locations`: Locations found using GCD (ICMP locations preferred).
-`AB` and `GCD` detect anycast if number of sites found is larger than 1.
-`backing_prefix` and `ASN` are from CAIDA's [prefix2as](https://www.caida.org/catalog/datasets/routeviews-prefix2as/) dataset.
-
-`locations` has the following format:
-- `city`: Geolocated city using [iGreedy's algorithm](https://ieeexplore.ieee.org/abstract/document/7470242).
-- `country_code`: 2 character country code (ISO 3166-1 alpha-2).
-- `id`: Nearest airport IATA 3 letter code.
-- `lat`: Latitude of airport.
-- `lon`: Longitude of airport.
-
-Due to NDA agreements with hitlists providers, only /24 prefixes marked at least by one measurement method as anycast are reported.
-
-IPv4.csv
-```bash
 prefix,number_of_sites,backing_prefix
 1.1.1.0/24,67,1.1.1.0/24
 ```
 
-We provide a .csv (with limited data) as it can be loaded using GitHub's Web UI for ease-of-access.
-This contains the /24-IPv4 or /48-IPv6 prefixes detected as anycast using GCD, alongside the number of sites found using GCD, and the backing prefix.
+## Measurement methodology
 
-## Running your own anycast census
+### IPv4 targets
 
-We make all tooling publicly available (licensed under MPL2.0).
-* First, we provide measurement tooling for performing AB and GCD measurements (available at [MAnycastR](https://github.com/rhendriks/MAnycastR)).
-* Second, we provide our optimized implementation of [iGreedy](https://ieeexplore.ieee.org/abstract/document/7470242) (available at [MiGreedy](https://github.com/rhendriks/MiGreedy)).
+We use the [USC/ISI ANT IPv4 hitlist](https://ant.isi.edu/datasets/index.html) (ranked ICMP/ping responsive IP addresses per /24), supplemented by:
+- Public DNS nameservers
+- OpenINTEL infra:ns records
+
+### IPv6 targets
+
+We use:
+- AAAA records from [OpenINTEL](https://www.openintel.nl/)
+- [IPv6Hitlist](https://ipv6hitlist.github.io/)
+- [IPv6-SRA](https://ipv6-sra.realmv6.org/) from TU Dresden and HAW Hamburg
+
+### Partial anycast
+
+To minimize daily probing impact, we scan at /24 granularity.
+However, some prefixes contain mixed unicast and anycast IP addresses (see paper for details) which we detect using multi-target probing.
+
+## Running your own census
+
+We make all measurement and analysis tooling publicly available under the MPL 2.0 license:
+
+### Measurement tooling
+
+[MAnycastR](https://github.com/rhendriks/MAnycastR) provides implementations for AB and GCD measurements
+
+### Geolocation
+
+[MiGreedy](https://github.com/rhendriks/MiGreedy) is our optimized implementation of [iGreedy's algorithm](https://ieeexplore.ieee.org/document/7470242) for IP geolocation, designed for large-scale production censuses.
+It supports unicast geolocation, improved detection using intersection, and confidence/accuracy metrics.
+
+## Citation
+
+When using this dataset for academic research, please cite the following paper:
+
+```bibtex
+@inproceedings{10.1145/3730567.3764484,
+  author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and van Rijswijk-Deij, Roland},
+  title = {LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System},
+  year = {2025},
+  booktitle = {Proceedings of the 2025 Internet Measurement Conference}
+}
+```
