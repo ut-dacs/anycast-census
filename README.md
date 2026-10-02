@@ -228,7 +228,7 @@ When using this dataset for academic research, please cite the following paper:
 
 ```bibtex
 @inproceedings{10.1145/3730567.3764484,
-  author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and van Rijswijk-Deij, Roland},
+  author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and Sommese, Raffaele and van Rijswijk-Deij, Roland},
   title = {LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System},
   year = {2025},
   booktitle = {Proceedings of the 2025 Internet Measurement Conference}
