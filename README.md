@@ -181,18 +181,26 @@ prefix,number_of_sites,backing_prefix
 
 ## Measurement methodology
 
-### IPv4 targets
+## Measurement methodology
 
-We use the [USC/ISI ANT IPv4 hitlist](https://ant.isi.edu/datasets/index.html) (ranked ICMP/ping responsive IP addresses per /24), supplemented by:
-- Public DNS nameservers
-- OpenINTEL infra:ns records
+### Targets
 
-### IPv6 targets
+Each probe protocol (ICMP, TCP, DNS) has its own hitlist per IP version, with several ranked targets per /24 (IPv4) or /48 (IPv6).
+We probe ranked targets iteratively, terminating once a target responds to reduce probing costs.
+The order of sources below are the order of probing preference.
 
-We use:
-- AAAA records from [OpenINTEL](https://www.openintel.nl/)
-- [IPv6Hitlist](https://ipv6hitlist.github.io/)
-- [IPv6-SRA](https://ipv6-sra.realmv6.org/) from TU Dresden and HAW Hamburg
+| Source | Description | ICMPv4 | TCPv4 | DNSv4 | ICMPv6 | TCPv6 | DNSv6 |
+|--------|-------------|:------:|:-----:|:-----:|:------:|:-----:|:-----:|
+| LACeS feedback loop | Anycast targets from earlier censuses, plus Ark full GCD scan targets | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| LACeS responders | Addresses that replied to the same protocol in the last 7 daily censuses | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [USC/ISI ANT hitlist](https://ant.isi.edu/datasets/index.html) | Ranked ping-responsive addresses per /24 | ✓ | | | | | |
+| [OpenINTEL](https://www.openintel.nl/) A/AAAA | Addresses seen in A/AAAA records | ✓ | ✓ | | ✓ | ✓ | |
+| [OpenINTEL](https://www.openintel.nl/) infra:ns | Authoritative name server addresses | | | ✓ | | | ✓ |
+| [anycast-prefixes](https://github.com/bgptools/anycast-prefixes) | bgp.tools' list of anycast prefixes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [Public DNS servers](https://public-dns.info/) | Public DNS name servers | | | ✓ | ✓ | | ✓ |
+| [ODNS](https://odns-data.netd.cs.tu-dresden.de/) | Open DNS resolvers and forwarders (TU Dresden) | | | ✓ | | | |
+| [IPv6 Hitlist](https://ipv6hitlist.github.io/) | Responsive addresses: ICMP, UDP/53, TCP/80 and TCP/443 (TUM) | | | | ✓ | ✓ | ✓ |
+| [IPv6-SRA](https://ipv6-sra.realmv6.org/) | Ping-responsive router addresses (TU Dresden, HAW Hamburg) | | | | ✓ | ✓ | |
 
 ### Partial anycast
 
