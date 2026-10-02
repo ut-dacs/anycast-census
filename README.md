@@ -17,9 +17,6 @@
   - [Data recommendations](#data-recommendations)
   - [Detection methods](#detection-methods)
 - [Data structure](#data-structure)
-  - [Columns](#columns)
-  - [Geolocation accuracy metrics](#geolocation-accuracy-metrics)
-  - [Unicast geolocation results](#unicast-geolocation-results)
 - [Measurement methodology](#measurement-methodology)
 - [Running your own census](#running-your-own-census)
 - [Citation](#citation)
@@ -144,31 +141,30 @@ YYYY/MM/DD/stats
 
 | Column | Description |
 |--------|-------------|
-| `prefix` | The candidate anycast /24 prefix (e.g., `1.0.0.0/24`) |
+| `prefix` | The candidate anycast prefix: /24 for IPv4 (e.g., `1.0.0.0/24`), /48 for IPv6 |
 | `AB_ICMPv4/v6` | Locations found using anycast-based method (ICMP) |
 | `AB_TCPv4/v6` | Locations found using anycast-based method (TCP SYNACK) |
 | `AB_DNSv4/v6` | Locations found using anycast-based method (DNS/UDP) |
-| `GCD_ICMPv4/v6` | Sites found using latency-based method (ICMP) |
-| `GCD_TCPv4/v6` | Sites found using latency-based method (TCP) |
+| `GCD_ICMPv4/v6` | Locations found using latency-based method (ICMP) |
+| `GCD_TCPv4/v6` | Locations found using latency-based method (TCP) |
 | `partial` | Whether partial anycast was detected (IPv4 only) |
 | `backing_prefix` | Corresponding IP routing table prefix (RouteViews) |
 | `ASN` | ASN(s) announcing the prefix (MOASes separated by `;`) |
-| `locations` | Detailed geolocation data from detected sites (see below) |
+| `locations` | One entry per geolocated location (see below) |
 
 ### Locations column
 
 | Field | Description |
 |-------|-------------|
-| `city` | Geolocated city using iGreedy's algorithm |
+| `id` | [GeoNames](https://www.geonames.org/) ID of the city, or `NoCity` when no candidate city lies within the RTT disc |
+| `city` | City the site is placed in, using iGreedy's algorithm (the most populous candidate) |
 | `country_code` | 2-character country code (ISO 3166-1 alpha-2) |
-| `airport_code` | Nearest airport IATA 3-letter code |
-| `lat` | Airport latitude |
-| `lon` | Airport longitude |
-| `radius` | Radius of the RTT disc in kilometers |
+| `lat` | City latitude |
+| `lon` | City longitude |
 | `candidate_diameter` | Maximum pairwise distance (km) between surviving candidate cities; smaller values indicate higher precision |
 | `num_constraints` | Number of overlapping discs that refined the candidate set; higher values indicate higher confidence in the result |
 
-The last three fields help in determining the confidence of geolocation results.
+**Note:** Geolocation is at airport granularity for dates before 2026-10-03 ( `id` contains an IATA 3-letter airport code before)
 
 ### CSV format
 
@@ -181,18 +177,32 @@ prefix,number_of_sites,backing_prefix
 
 ## Measurement methodology
 
-### IPv4 targets
+## Measurement methodology
 
-We use the [USC/ISI ANT IPv4 hitlist](https://ant.isi.edu/datasets/index.html) (ranked ICMP/ping responsive IP addresses per /24), supplemented by:
-- Public DNS nameservers
-- OpenINTEL infra:ns records
+### Targets
 
-### IPv6 targets
+Each probe protocol (ICMP, TCP, DNS) has its own hitlist per IP version, with several ranked targets per /24 (IPv4) or /48 (IPv6).
+We probe the ranked targets of a prefix iteratively,
+stopping once one responds,
+to reduce probing costs (see [MAnycastR's ranked hitlists](https://github.com/rhendriks/MAnycastR#uscisi-ant-hitlists)).
+The order of sources below are the order of probing preference.
 
-We use:
-- AAAA records from [OpenINTEL](https://www.openintel.nl/)
-- [IPv6Hitlist](https://ipv6hitlist.github.io/)
-- [IPv6-SRA](https://ipv6-sra.realmv6.org/) from TU Dresden and HAW Hamburg
+| Source | Description | ICMPv4 | TCPv4 | DNSv4 | ICMPv6 | TCPv6 | DNSv6 |
+|--------|-------------|:------:|:-----:|:-----:|:------:|:-----:|:-----:|
+| LACeS feedback loop | Anycast targets from earlier censuses, plus Ark full GCD scan targets | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| LACeS responders | Addresses that replied to the same protocol in the last 7 daily censuses | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [USC/ISI ANT hitlist](https://ant.isi.edu/datasets/index.html) | Ranked ping-responsive addresses per /24 | ✓ | | | | | |
+| [OpenINTEL](https://www.openintel.nl/) A/AAAA | Addresses seen in A/AAAA records | ✓ | ✓ | | ✓ | ✓ | |
+| [OpenINTEL](https://www.openintel.nl/) infra:ns | Authoritative name server addresses | | | ✓ | | | ✓ |
+| [anycast-prefixes](https://github.com/bgptools/anycast-prefixes) | bgp.tools' list of anycast prefixes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [Public DNS servers](https://public-dns.info/) | Public DNS name servers | | | ✓ | | | ✓ |
+| [ODNS](https://odns-data.netd.cs.tu-dresden.de/) | Open DNS resolvers and forwarders (TU Dresden) | | | ✓ | | | |
+| [IPv6 Hitlist](https://ipv6hitlist.github.io/) | Responsive addresses: ICMP, UDP/53, TCP/80 and TCP/443 (TUM) | | | | ✓ | ✓ | ✓ |
+| [IPv6-SRA](https://ipv6-sra.realmv6.org/) | Ping-responsive router addresses (TU Dresden, HAW Hamburg) | | | | ✓ | ✓ | |
+
+Hitlists are rebuilt every Saturday.
+We are happy to share our weekly hitlists on request ([remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)),
+provided you have permission from the data sources that require it.
 
 ### Partial anycast
 
@@ -218,7 +228,7 @@ When using this dataset for academic research, please cite the following paper:
 
 ```bibtex
 @inproceedings{10.1145/3730567.3764484,
-  author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and van Rijswijk-Deij, Roland},
+  author = {Hendriks, Remi and Luckie, Matthew and Jonker, Mattijs and Sommese, Raffaele and van Rijswijk-Deij, Roland},
   title = {LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System},
   year = {2025},
   booktitle = {Proceedings of the 2025 Internet Measurement Conference}
