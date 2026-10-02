@@ -194,7 +194,7 @@ The order of sources below are the order of probing preference.
 | Source | Description | ICMPv4 | TCPv4 | DNSv4 | ICMPv6 | TCPv6 | DNSv6 |
 |--------|-------------|:------:|:-----:|:-----:|:------:|:-----:|:-----:|
 | LACeS feedback loop | Anycast targets from earlier censuses, plus Ark full GCD scan targets | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| LACeS responders | Addresses that replied to the same protocol in the last 7 daily censuses | | ✓ | ✓ | ✓ | ✓ | ✓ |
+| LACeS responders | Addresses that replied to the same protocol in the last 7 daily censuses | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [USC/ISI ANT hitlist](https://ant.isi.edu/datasets/index.html) | Ranked ping-responsive addresses per /24 | ✓ | | | | | |
 | [OpenINTEL](https://www.openintel.nl/) A/AAAA | Addresses seen in A/AAAA records | ✓ | ✓ | | ✓ | ✓ | |
 | [OpenINTEL](https://www.openintel.nl/) infra:ns | Authoritative name server addresses | | | ✓ | | | ✓ |
