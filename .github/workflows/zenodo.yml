@@ -1,0 +1,53 @@
+name: Archive to Zenodo
+
+# Publishes a new version of the census record on Zenodo (https://doi.org/10.5281/zenodo.17174467)
+on:
+  schedule:
+    - cron: '0 6 1 * *'  # the 1st, 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'Months to archive, space-separated YYYY-MM (default: last month)'
+        required: false
+      dry_run:
+        description: 'Build the zips and show the plan, without publishing'
+        type: boolean
+        default: false
+
+concurrency: zenodo
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Months to archive
+        id: months
+        run: |
+          months="${{ inputs.months }}"
+          if [ -z "$months" ]; then
+            months=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+          fi
+          echo "months=$months" >> "$GITHUB_OUTPUT"
+          echo "Archiving: $months"
+
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: .github/zenodo
+
+      - name: Check out the months' folders
+        run: |
+          for month in ${{ steps.months.outputs.months }}; do
+            git sparse-checkout add "${month%-*}/${month#*-}"
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install requests
+
+      - name: Publish on Zenodo
+        env:
+          ZENODO_TOKEN: ${{ secrets.ZENODO_TOKEN }}
+        run: python .github/zenodo/publish.py ${{ inputs.dry_run && '--dry-run' || '' }} ${{ steps.months.outputs.months }}
