@@ -44,6 +44,14 @@ def _fetch_parquet(url: str) -> pd.DataFrame:
         raise Exception(f"Failed to download {url}: HTTP {response.status_code}")
     return pd.read_parquet(io.BytesIO(response.content))
 
+def _parse_date(value: str) -> datetime:
+    """Parse a snapshot date given as YYYY-MM-DD or YYYYMMDD."""
+    for fmt in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            pass
+    raise ValueError(f"'{value}' is not a date in YYYY-MM-DD or YYYYMMDD form")
 
 def _max_ab_gcd(df: pd.DataFrame, version: str) -> tuple[pd.Series, pd.Series]:
     """Return the per-row max AB and max GCD across all protocols for the given IP version."""
@@ -125,7 +133,7 @@ def main(args):
         datetime_obj = None
         df = download_latest(args.ip_version)
     else:
-        datetime_obj = datetime.strptime(args.date, "%Y%m%d")
+        datetime_obj = _parse_date(args.date)
         df = download_date(datetime_obj, args.ip_version)
 
     output_path = args.output_dir or "."
@@ -147,7 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--ip-version", required=True, choices=["v4", "v6"],
                         help="IP version: v4 or v6")
     parser.add_argument("--date", required=True, type=str,
-                        help="Snapshot date as YYYYMMDD, or 'latest' for the most recent snapshot")
+                        help="Snapshot date as YYYY-MM-DD, YYYYMMDD, or 'latest' for the most recent snapshot")
     parser.add_argument("--output-dir", required=False, type=str,
                         help="Output directory (default: current directory)")
     parser.add_argument("--prefixes-only", action="store_true",
