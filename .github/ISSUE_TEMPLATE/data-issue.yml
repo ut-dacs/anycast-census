@@ -1,0 +1,67 @@
+name: Data issue
+description: Report or confirm the validity of a census result (anycast status, sites, location, ASN)
+labels: [data]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping validate the census :)
+        Both reports of wrong results and confirmations of correct ones are useful.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you reporting?
+      multiple: true
+      options:
+        - Confirmation that the result is correct
+        - Listed as anycast, but it is unicast (false positive)
+        - Anycast, but missing from the census (false negative)
+        - Wrong number of sites
+        - Wrong site location
+        - Wrong backing prefix or ASN
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: prefix
+    attributes:
+      label: Prefix
+      description: The /24 (IPv4) or /48 (IPv6) as the census lists it.
+      placeholder: e.g., 192.0.2.0/24 or 2001:db8:1234::/48
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Census date
+      description: The date of the census file you looked at, or `latest`.
+      placeholder: e.g., 2026-10-03
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What the census says
+      description: The relevant columns, e.g. `AB_ICMPv4`, `GCD_ICMPv4` or the `locations` entries.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What is correct, and how do you know?
+      description: For example operator knowledge, a list of PoPs, traceroutes, or RIPE Atlas measurement IDs.
+    validations:
+      required: true
+  - type: dropdown
+    id: operator
+    attributes:
+      label: Do you operate this prefix?
+      options:
+        - "Yes"
+        - "No"
+        - Prefer not to say
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
