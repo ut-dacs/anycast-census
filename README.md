@@ -144,31 +144,30 @@ YYYY/MM/DD/stats
 
 | Column | Description |
 |--------|-------------|
-| `prefix` | The candidate anycast /24 prefix (e.g., `1.0.0.0/24`) |
+| `prefix` | The candidate anycast prefix: /24 for IPv4 (e.g., `1.0.0.0/24`), /48 for IPv6 |
 | `AB_ICMPv4/v6` | Locations found using anycast-based method (ICMP) |
 | `AB_TCPv4/v6` | Locations found using anycast-based method (TCP SYNACK) |
 | `AB_DNSv4/v6` | Locations found using anycast-based method (DNS/UDP) |
-| `GCD_ICMPv4/v6` | Sites found using latency-based method (ICMP) |
-| `GCD_TCPv4/v6` | Sites found using latency-based method (TCP) |
+| `GCD_ICMPv4/v6` | Locations found using latency-based method (ICMP) |
+| `GCD_TCPv4/v6` | Locations found using latency-based method (TCP) |
 | `partial` | Whether partial anycast was detected (IPv4 only) |
 | `backing_prefix` | Corresponding IP routing table prefix (RouteViews) |
 | `ASN` | ASN(s) announcing the prefix (MOASes separated by `;`) |
-| `locations` | Detailed geolocation data from detected sites (see below) |
+| `locations` | One entry per geolocated location (see below) |
 
 ### Locations column
 
 | Field | Description |
 |-------|-------------|
-| `city` | Geolocated city using iGreedy's algorithm |
+| `id` | [GeoNames](https://www.geonames.org/) ID of the city), or `NoCity` when no candidate city lies within the RTT disc |
+| `city` | City the site is placed in, using iGreedy's algorithm (the most populous candidate) |
 | `country_code` | 2-character country code (ISO 3166-1 alpha-2) |
-| `airport_code` | Nearest airport IATA 3-letter code |
-| `lat` | Airport latitude |
-| `lon` | Airport longitude |
-| `radius` | Radius of the RTT disc in kilometers |
+| `lat` | City latitude |
+| `lon` | City longitude |
 | `candidate_diameter` | Maximum pairwise distance (km) between surviving candidate cities; smaller values indicate higher precision |
 | `num_constraints` | Number of overlapping discs that refined the candidate set; higher values indicate higher confidence in the result |
 
-The last three fields help in determining the confidence of geolocation results.
+**Note:** Geolocation is at airport granularity for dates before 2026-10-03 ( `id` contains an IATA 3-letter airport code before)
 
 ### CSV format
 
