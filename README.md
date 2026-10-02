@@ -159,7 +159,7 @@ YYYY/MM/DD/stats
 
 | Field | Description |
 |-------|-------------|
-| `id` | [GeoNames](https://www.geonames.org/) ID of the city), or `NoCity` when no candidate city lies within the RTT disc |
+| `id` | [GeoNames](https://www.geonames.org/) ID of the city, or `NoCity` when no candidate city lies within the RTT disc |
 | `city` | City the site is placed in, using iGreedy's algorithm (the most populous candidate) |
 | `country_code` | 2-character country code (ISO 3166-1 alpha-2) |
 | `lat` | City latitude |
