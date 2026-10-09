@@ -25,6 +25,8 @@
 * **2024-05-31** — GCD measurements now performed using the Ark platform instead of [TANGLED](https://tangled.dacs.utwente.nl/) nodes.
 
 ## Hitlist Updates
+* **2026-10-10** — Added name server addresses from the [DNS Dependency Graph](https://storage.dacs.utwente.nl/sommeser-dnsdep/index.html) (UT DACS, IIJ Labs) to the IPv4 and IPv6 DNS hitlists. Adding ~2.6k IPv4 /24s and ~0.7k IPv6 /48s.
+* **2026-10-10** — ICMPv4 hitlist now ranks addresses that responded in the last 7 censuses first, as the other hitlists already did.
 * **2026-09-01** - All hitlists updated.
 * **2026-04-21** — IPv4 hitlists update.
 * **2026-03-27** - Added [ODNS](https://odns-data.netd.cs.tu-dresden.de/) to the IPv4 DNS hitlist, covering an additional 150 anycast /24-prefixes.
