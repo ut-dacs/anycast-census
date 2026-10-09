@@ -177,8 +177,6 @@ prefix,number_of_sites,backing_prefix
 
 ## Measurement methodology
 
-## Measurement methodology
-
 ### Targets
 
 Each probe protocol (ICMP, TCP, DNS) has its own hitlist per IP version, with several ranked targets per /24 (IPv4) or /48 (IPv6).
@@ -194,13 +192,14 @@ The order of sources below are the order of probing preference.
 | [USC/ISI ANT hitlist](https://ant.isi.edu/datasets/index.html) | Ranked ping-responsive addresses per /24 | ✓ | | | | | |
 | [OpenINTEL](https://www.openintel.nl/) A/AAAA | Addresses seen in A/AAAA records | ✓ | ✓ | | ✓ | ✓ | |
 | [OpenINTEL](https://www.openintel.nl/) infra:ns | Authoritative name server addresses | | | ✓ | | | ✓ |
+| [DNS Dependency Graph](https://storage.dacs.utwente.nl/sommeser-dnsdep/index.html) | Authoritative name server addresses (UT DACS, IIJ Labs) | | | ✓ | | | ✓ |
 | [anycast-prefixes](https://github.com/bgptools/anycast-prefixes) | bgp.tools' list of anycast prefixes | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [Public DNS servers](https://public-dns.info/) | Public DNS name servers | | | ✓ | | | ✓ |
 | [ODNS](https://odns-data.netd.cs.tu-dresden.de/) | Open DNS resolvers and forwarders (TU Dresden) | | | ✓ | | | |
 | [IPv6 Hitlist](https://ipv6hitlist.github.io/) | Responsive addresses: ICMP, UDP/53, TCP/80 and TCP/443 (TUM) | | | | ✓ | ✓ | ✓ |
 | [IPv6-SRA](https://ipv6-sra.realmv6.org/) | Ping-responsive router addresses (TU Dresden, HAW Hamburg) | | | | ✓ | ✓ | |
 
-Hitlists are rebuilt every Saturday.
+Hitlists are rebuilt every Sunday.
 We are happy to share our weekly hitlists on request ([remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)),
 provided you have permission from the data sources that require it.
 
