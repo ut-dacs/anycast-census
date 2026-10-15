@@ -123,8 +123,8 @@ This may help with determining whether AB results are FPs or GCD results are FNs
 ```
 IPv4-latest.parquet
 IPv6-latest.parquet
-IPv4-latest.csv
-IPv6-latest.csv
+routed-prefixes-IPv4-latest.csv
+routed-prefixes-IPv6-latest.csv
 stats-latest
 ```
 
@@ -168,12 +168,18 @@ YYYY/MM/DD/stats
 
 ### CSV format
 
-Limited data is provided in CSV format for ease of access via GitHub's Web UI:
+We publish routed-prefixes-IPv*.csv that contains:
+```
+prefix,asn
+4.144.0.0/12,8075
+```
+This file contains all unique `backing_prefix` values from the .parquet (i.e., the corresponding IP routing table prefix).
+We provide this file as this allows easy comparison with routed prefixes and is easily accessible via GitHub's web UI.
+Furthermore, it simplifies joint analysis using bgp.tools' list (that classifies anycast based on the routed prefix) for those using our dataset in combination with theirs.
 
-```
-prefix,number_of_sites,backing_prefix
-1.1.1.0/24,67,1.1.1.0/24
-```
+We note that a `backing_prefix` may contain a mix of unicast and anycast addresses (see paper for details).
+Assuming the entire `backing_prefix` is anycast leads to many FPs, especially for the larger prefixes (up to /8 for IPv4).
+Our recommendation is to assess anycast addresses using the /24, /48 blocks in the .parquet file.
 
 ## Measurement methodology
 
