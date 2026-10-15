@@ -173,8 +173,8 @@ We publish routed-prefixes-IPv*.csv that contains:
 prefix,asn
 4.144.0.0/12,8075
 ```
-This file contains all unique `backing_prefix` values from the .parquet (i.e., the corresponding IP routing table prefix).
-We provide this file as this allows easy comparison with routed prefixes and is easily accessible via GitHub's web UI.
+This file contains all IP routing table prefixes in which we detect anycast with high confidence (i.e., `backing_prefix` column in the .parquet).
+We provide this file as this allows easy analysis using routed prefixes and is easily accessible via GitHub's web UI.
 Furthermore, it simplifies joint analysis using bgp.tools' list (that classifies anycast based on the routed prefix) for those using our dataset in combination with theirs.
 
 We note that a `backing_prefix` may contain a mix of unicast and anycast addresses (see paper for details).
