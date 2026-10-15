@@ -209,6 +209,11 @@ Hitlists are rebuilt every Sunday.
 We are happy to share our weekly hitlists on request ([remi.hendriks@utwente.nl](mailto:remi.hendriks@utwente.nl)),
 provided you have permission from the data sources that require it.
 
+### Aliased prefixes
+
+We limit scanning for aliased prefixes (using TUM's aliased prefixes list) to the first /48 within each routed prefix of aliased blocks.
+This is necessary as the large number of /48-prefixes within these aliased blocks are infeasible to scan daily (using reasonable probing rates).
+
 ### Partial anycast
 
 To minimize daily probing impact, we scan at /24 granularity.
