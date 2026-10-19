@@ -211,7 +211,7 @@ provided you have permission from the data sources that require it.
 
 ### Aliased prefixes
 
-We scan aliased prefixes (using TUM's aliased prefixes list) at /40-prefix granularity.
+Starting from 2026-10-17, we scan aliased prefixes (using TUM's aliased prefixes list) at /40-prefix granularity.
 This is necessary as the large number of /48-prefixes within these aliased ranges are infeasible to scan daily (using reasonable probing rates).
 We note that some aliased prefixes are observed to have a mix of anycast and unicast ranges within.
 Therefore, our coverage at /40-prefix granularity is too coarse in some cases.
