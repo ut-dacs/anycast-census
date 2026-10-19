@@ -211,8 +211,10 @@ provided you have permission from the data sources that require it.
 
 ### Aliased prefixes
 
-We limit scanning for aliased prefixes (using TUM's aliased prefixes list) to the first /48 within each routed prefix of aliased blocks.
-This is necessary as the large number of /48-prefixes within these aliased blocks are infeasible to scan daily (using reasonable probing rates).
+We scan aliased prefixes (using TUM's aliased prefixes list) at /40-prefix granularity.
+This is necessary as the large number of /48-prefixes within these aliased ranges are infeasible to scan daily (using reasonable probing rates).
+We note that some aliased prefixes are observed to have a mix of anycast and unicast ranges within.
+Therefore, our coverage at /40-prefix granularity is too coarse in some cases.
 
 ### Partial anycast
 
