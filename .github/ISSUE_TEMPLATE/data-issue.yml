@@ -49,7 +49,7 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: What is correct, and how do you know?
+      label: What is incorrect/correct, and how do you know?
       description: For example operator knowledge, a list of PoPs, traceroutes, or RIPE Atlas measurement IDs.
     validations:
       required: true
