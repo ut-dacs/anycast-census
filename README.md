@@ -1,7 +1,7 @@
 # LACeS Anycast Census
 
 [![DOI](https://img.shields.io/badge/DOI-10.1145%2F3730567.3764484-blue)](https://doi.org/10.1145/3730567.3764484)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Website](https://img.shields.io/badge/Website-manycast.net-blue)](https://manycast.net)
 
 [LACeS: an Open, Fast, Responsible and Efficient Longitudinal Anycast Census System](https://doi.org/10.1145/3730567.3764484)
