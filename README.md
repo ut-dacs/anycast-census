@@ -19,6 +19,7 @@
 - [Data structure](#data-structure)
 - [Measurement methodology](#measurement-methodology)
 - [Running your own census](#running-your-own-census)
+- [License](#license)
 - [Citation](#citation)
 
 ## Downloading census data
