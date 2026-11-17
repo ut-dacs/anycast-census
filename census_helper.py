@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # Helper functions for the Anycast Census dataset (github.com/ut-dacs/anycast-census)
 # Data is also accessible via the manycast.net REST API — see repo README for details.
 
