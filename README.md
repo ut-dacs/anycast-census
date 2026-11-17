@@ -143,15 +143,18 @@ YYYY/MM/DD/stats
 | Column | Description |
 |--------|-------------|
 | `prefix` | The candidate anycast prefix: /24 for IPv4 (e.g., `1.0.0.0/24`), /48 for IPv6 |
-| `AB_ICMPv4/v6` | Locations found using anycast-based method (ICMP) |
-| `AB_TCPv4/v6` | Locations found using anycast-based method (TCP SYNACK) |
-| `AB_DNSv4/v6` | Locations found using anycast-based method (DNS/UDP) |
-| `GCD_ICMPv4/v6` | Locations found using latency-based method (ICMP) |
-| `GCD_TCPv4/v6` | Locations found using latency-based method (TCP) |
+| `AB` | Locations found using anycast-based method |
+| `GCD` | Locations found using latency-based method |
 | `partial` | Whether partial anycast was detected (IPv4 only) |
 | `backing_prefix` | Corresponding IP routing table prefix (RouteViews) |
 | `ASN` | ASN(s) announcing the prefix (MOASes separated by `;`) |
 | `locations` | One entry per geolocated location (see below) |
+
+For `AB` and `GCD` we scan with multiple protocols, these values reflect the highest value found.
+We probe `AB` using ICMP, UDP, TCP.
+We probe `GCD` using ICMP, TCP.
+
+Per-protocol breakdown is available on manycast.net
 
 ### Locations column
 
