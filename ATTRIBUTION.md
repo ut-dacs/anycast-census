@@ -20,3 +20,11 @@ The latency-based (GCD) results are measured from:
 
 The hitlists used to select probe targets are listed under [Targets](README.md#targets).
 They are not part of the published files where we only disclose the aggregate /24, /48 prefixes.
+
+## Licensing
+
+Our own contributions to the census files are licensed under
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+(see LICENSE). Third-party data listed above remains subject to its own
+license or terms, which take precedence for those components. GeoNames
+data has been modified (filtered to cities ≥15,000 and matched to RTT discs).
