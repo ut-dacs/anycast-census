@@ -234,6 +234,14 @@ We make all measurement and analysis tooling publicly available under the MPL 2.
 [MiGreedy](https://github.com/rhendriks/MiGreedy) is our optimized implementation of [iGreedy's algorithm](https://ieeexplore.ieee.org/document/7470242) for IP geolocation, designed for large-scale production censuses.
 It supports unicast geolocation, improved detection using intersection, and confidence/accuracy metrics.
 
+## License
+
+The census data in this repository is licensed under
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+
+Some fields are derived from third-party data with their own terms;
+see [ATTRIBUTION.md](ATTRIBUTION.md).
+
 ## Citation
 
 When using this dataset for academic research, please cite the following paper:
