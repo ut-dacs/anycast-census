@@ -32,14 +32,16 @@ The parquet files in this repository can be downloaded in alternative formats vi
 |--------|---------|
 | `.parquet` | `https://manycast.net/api/v1/export/IPv4-latest.parquet` |
 | `.parquet.gz` | `https://manycast.net/api/v1/export/IPv4-latest.parquet.gz` |
+| `.csv` | `https://manycast.net/api/v1/export/IPv4-latest.csv` |
 | `.csv.gz` | `https://manycast.net/api/v1/export/IPv4-latest.csv.gz` |
+| `.json` | `https://manycast.net/api/v1/export/IPv4-latest.json` |
 | `.json.gz` | `https://manycast.net/api/v1/export/IPv4-latest.json.gz` |
 
 Replace `latest` with a specific date (e.g., `2026-03-22`) to download a historical snapshot. Both IPv4 and IPv6 are available with prefixes `IPv4-` and `IPv6-`.
 
 **Example:**
 ```bash
-curl -O https://manycast.net/api/v1/export/IPv4-2026-03-22.csv.gz
+curl -O https://manycast.net/api/v1/export/IPv4-2026-03-22.csv
 ```
 
 See the [full API documentation](https://manycast.net/api/docs) for querying individual prefixes, ASNs, and daily statistics.
